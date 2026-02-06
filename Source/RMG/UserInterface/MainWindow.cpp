@@ -964,7 +964,7 @@ void MainWindow::updateActions(bool inEmulation, bool isPaused)
     keyBinding = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::KeyBinding_Shutdown));
     this->action_System_Shutdown->setShortcut(QKeySequence(keyBinding));
 #ifdef NETPLAY
-    this->action_System_Shutdown->setEnabled(inEmulation && !CoreHasInitNetplay() && this->kailleraSessionManager == nullptr);
+    this->action_System_Shutdown->setEnabled(inEmulation && !CoreHasInitNetplay());
 #else
     this->action_System_Shutdown->setEnabled(inEmulation && !CoreHasInitNetplay());
 #endif
@@ -1883,6 +1883,18 @@ void MainWindow::on_Action_System_Shutdown(void)
     {
         return;
     }
+
+#ifdef NETPLAY
+    if (this->kailleraSessionManager != nullptr && this->kailleraSessionManager->isGameActive())
+    {
+        this->kailleraSessionManager->endGame();
+        return;
+    }
+    if (CoreHasInitKaillera())
+    {
+        CoreEndKailleraGame();
+    }
+#endif
 
     if (!CoreStopEmulation())
     {

@@ -328,9 +328,9 @@ CORE_EXPORT bool CoreKailleraSendChat(std::string text)
 
 CORE_EXPORT bool CoreEndKailleraGame(void)
 {
-    if (!s_GameActive)
+    if (!s_Initialized)
     {
-        return true; // No game active
+        return false;
     }
 
     if (kailleraEndGame)

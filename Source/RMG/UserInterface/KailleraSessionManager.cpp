@@ -166,6 +166,10 @@ void KailleraSessionManager::handlePlayerDropped(QString nick, int playerNum)
     // Player 1 (host) dropping ends the game for everyone
     if (playerNum == 1)
     {
+        if (playerNum != m_playerNumber && CoreHasInitKaillera())
+        {
+            CoreEndKailleraGame();
+        }
         m_gameActive = false;
         emit gameEnded();
         return;
