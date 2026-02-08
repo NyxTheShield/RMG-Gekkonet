@@ -235,28 +235,52 @@ void ControllerWidget::initializeMappingButtons()
         mapping.removeMappingButton->Initialize(this, mapping.mappingButton);
 
         // clear text & set icon
+        QSize mappingIconSize(20, 16);
+        QSize mappingButtonSize(28, 28);
+        QString iconButtonStyle = QStringLiteral("padding: 0px;");
         mapping.addMappingButton->setText("");
-        mapping.removeMappingButton->setText("");
         mapping.addMappingButton->setIcon(QIcon::fromTheme("add-line"));
+        mapping.addMappingButton->setIconSize(mappingIconSize);
+        mapping.addMappingButton->setFixedSize(mappingButtonSize);
+        mapping.addMappingButton->setStyleSheet(iconButtonStyle);
+        mapping.removeMappingButton->setText("");
         mapping.removeMappingButton->setIcon(QIcon::fromTheme("delete-back-line"));
+        mapping.removeMappingButton->setIconSize(mappingIconSize);
+        mapping.removeMappingButton->setFixedSize(mappingButtonSize);
+        mapping.removeMappingButton->setStyleSheet(iconButtonStyle);
     }
 }
 
 void ControllerWidget::initializeProfileButtons()
 {
+    QSize profileIconSize(20, 16);
+    QSize profileButtonSize(28, 28);
+    QString iconButtonStyle = QStringLiteral("padding: 0px;");
     this->addProfileButton->setText("");
     this->addProfileButton->setIcon(QIcon::fromTheme("add-line"));
+    this->addProfileButton->setIconSize(profileIconSize);
+    this->addProfileButton->setFixedSize(profileButtonSize);
+    this->addProfileButton->setStyleSheet(iconButtonStyle);
     this->removeProfileButton->setText("");
     this->removeProfileButton->setIcon(QIcon::fromTheme("delete-bin-line"));
+    this->removeProfileButton->setIconSize(profileIconSize);
+    this->removeProfileButton->setFixedSize(profileButtonSize);
+    this->removeProfileButton->setStyleSheet(iconButtonStyle);
 }
 
 void ControllerWidget::initializeMiscButtons()
 {
+    QSize iconSize(20, 16);
     this->inputDeviceRefreshButton->setIcon(QIcon::fromTheme("refresh-line"));
+    this->inputDeviceRefreshButton->setIconSize(iconSize);
     this->autoConfigureButton->setIcon(QIcon::fromTheme("magic-line"));
+    this->autoConfigureButton->setIconSize(iconSize);
     this->resetButton->setIcon(QIcon::fromTheme("restart-line"));
+    this->resetButton->setIconSize(iconSize);
     this->optionsButton->setIcon(QIcon::fromTheme("settings-3-line"));
+    this->optionsButton->setIconSize(iconSize);
     this->hotkeysButton->setIcon(QIcon::fromTheme("gamepad-line"));
+    this->hotkeysButton->setIconSize(iconSize);
 }
 
 bool ControllerWidget::isCurrentDeviceKeyboard()
