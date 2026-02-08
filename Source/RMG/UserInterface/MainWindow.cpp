@@ -75,6 +75,7 @@
 #include <RMG-Core/SaveState.hpp>
 #include <RMG-Core/Settings.hpp>
 #include <RMG-Core/Plugins.hpp>
+#include <RMG-Core/Raphnet.hpp>
 #include <RMG-Core/Netplay.hpp>
 #include <RMG-Core/Kaillera.hpp>
 #include <RMG-Core/Version.hpp>
@@ -624,18 +625,14 @@ void MainWindow::checkRaphnetPluginMismatch(void)
         return;
     }
 
-    // Check each player's configured device name for raphnet adapters
+    // Check each player's configured device name for raphnet 3.0+ adapters
     bool foundRaphnet = false;
     for (int i = 0; i < 4; i++)
     {
         std::string section = "Rosalie's Mupen GUI - Input Plugin Profile " + std::to_string(i);
         std::string deviceName = CoreSettingsGetStringValue(SettingsID::Input_DeviceName, section);
 
-        // Case-insensitive check for "raphnet"
-        std::string deviceNameLower = deviceName;
-        std::transform(deviceNameLower.begin(), deviceNameLower.end(), deviceNameLower.begin(), ::tolower);
-
-        if (deviceNameLower.find("raphnet") != std::string::npos)
+        if (isRaphnet3Plus(deviceName))
         {
             foundRaphnet = true;
             break;

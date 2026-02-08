@@ -17,6 +17,7 @@
 
 #include <RMG-Core/RomSettings.hpp>
 #include <RMG-Core/RomHeader.hpp>
+#include <RMG-Core/Raphnet.hpp>
 #include <RMG-Core/Core.hpp>
 
 #include <QInputDialog>
@@ -234,28 +235,52 @@ void ControllerWidget::initializeMappingButtons()
         mapping.removeMappingButton->Initialize(this, mapping.mappingButton);
 
         // clear text & set icon
+        QSize mappingIconSize(20, 16);
+        QSize mappingButtonSize(28, 28);
+        QString iconButtonStyle = QStringLiteral("padding: 0px;");
         mapping.addMappingButton->setText("");
-        mapping.removeMappingButton->setText("");
         mapping.addMappingButton->setIcon(QIcon::fromTheme("add-line"));
+        mapping.addMappingButton->setIconSize(mappingIconSize);
+        mapping.addMappingButton->setFixedSize(mappingButtonSize);
+        mapping.addMappingButton->setStyleSheet(iconButtonStyle);
+        mapping.removeMappingButton->setText("");
         mapping.removeMappingButton->setIcon(QIcon::fromTheme("delete-back-line"));
+        mapping.removeMappingButton->setIconSize(mappingIconSize);
+        mapping.removeMappingButton->setFixedSize(mappingButtonSize);
+        mapping.removeMappingButton->setStyleSheet(iconButtonStyle);
     }
 }
 
 void ControllerWidget::initializeProfileButtons()
 {
+    QSize profileIconSize(20, 16);
+    QSize profileButtonSize(28, 28);
+    QString iconButtonStyle = QStringLiteral("padding: 0px;");
     this->addProfileButton->setText("");
     this->addProfileButton->setIcon(QIcon::fromTheme("add-line"));
+    this->addProfileButton->setIconSize(profileIconSize);
+    this->addProfileButton->setFixedSize(profileButtonSize);
+    this->addProfileButton->setStyleSheet(iconButtonStyle);
     this->removeProfileButton->setText("");
     this->removeProfileButton->setIcon(QIcon::fromTheme("delete-bin-line"));
+    this->removeProfileButton->setIconSize(profileIconSize);
+    this->removeProfileButton->setFixedSize(profileButtonSize);
+    this->removeProfileButton->setStyleSheet(iconButtonStyle);
 }
 
 void ControllerWidget::initializeMiscButtons()
 {
+    QSize iconSize(20, 16);
     this->inputDeviceRefreshButton->setIcon(QIcon::fromTheme("refresh-line"));
+    this->inputDeviceRefreshButton->setIconSize(iconSize);
     this->autoConfigureButton->setIcon(QIcon::fromTheme("magic-line"));
+    this->autoConfigureButton->setIconSize(iconSize);
     this->resetButton->setIcon(QIcon::fromTheme("restart-line"));
+    this->resetButton->setIconSize(iconSize);
     this->optionsButton->setIcon(QIcon::fromTheme("settings-3-line"));
+    this->optionsButton->setIconSize(iconSize);
     this->hotkeysButton->setIcon(QIcon::fromTheme("gamepad-line"));
+    this->hotkeysButton->setIconSize(iconSize);
 }
 
 bool ControllerWidget::isCurrentDeviceKeyboard()
@@ -430,6 +455,12 @@ void ControllerWidget::setPluggedIn(bool value)
     for (auto& widget : widgetList)
     {
         widget->setEnabled(value);
+    }
+
+    // when plugging in, respect Real N64 Range checkbox state
+    if (value && this->realN64RangeCheckBox->isChecked())
+    {
+        this->analogStickRangeSlider->setEnabled(false);
     }
 
     this->ClearControllerImage();
@@ -750,9 +781,12 @@ void ControllerWidget::on_deadZoneSlider_valueChanged(int value)
 
 void ControllerWidget::on_analogStickRangeSlider_valueChanged(int value)
 {
+    double actualRange = 127.0 * value / 100.0;
     QString title = tr("Analog Stick Range: ");
+    title += QString::number(actualRange, 'f', 1);
+    title += " (";
     title += QString::number(value);
-    title += "%";
+    title += "%)";
 
     this->analogStickRangeGroupBox->setTitle(title);
     this->controllerImageWidget->SetRange(value);
@@ -810,11 +844,10 @@ void ControllerWidget::on_inputDeviceComboBox_currentIndexChanged(int value)
         deviceData.device = { };
     }
 
-    // Check if this is a raphnet adapter and prompt user to switch plugin
+    // Check if this is a raphnet 3.0+ adapter and prompt user to switch plugin
     if (deviceData.device.type == InputDeviceType::Joystick)
     {
-        QString deviceName = QString::fromStdString(deviceData.device.name);
-        if (deviceName.contains("raphnet", Qt::CaseInsensitive))
+        if (isRaphnet3Plus(deviceData.device.name))
         {
             QMessageBox::StandardButton result = QMessageBox::question(
                 this,
@@ -1852,7 +1885,9 @@ void ControllerWidget::LoadSettings(QString sectionQString, bool loadUserProfile
     bool realN64Range = CoreSettingsGetBoolValue(SettingsID::Input_RealN64Range, section);
     this->realN64RangeCheckBox->setChecked(realN64Range);
     this->analogStickRangeSlider->setEnabled(!realN64Range);
-    this->analogStickRangeSlider->setValue(CoreSettingsGetIntValue(SettingsID::Input_Range, section));
+    int rangeValue = CoreSettingsGetIntValue(SettingsID::Input_Range, section);
+    this->analogStickRangeSlider->setValue(rangeValue);
+    this->on_analogStickRangeSlider_valueChanged(rangeValue);
     this->deadZoneSlider->setValue(CoreSettingsGetIntValue(SettingsID::Input_Deadzone, section));
     this->optionsDialogSettings.RemoveDuplicateMappings = CoreSettingsGetBoolValue(SettingsID::Input_RemoveDuplicateMappings, section);
     this->optionsDialogSettings.ControllerPak = CoreSettingsGetIntValue(SettingsID::Input_Pak, section);
