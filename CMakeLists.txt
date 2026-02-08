@@ -17,14 +17,33 @@ project(RMG)
 
 find_package(Git)
 if (GIT_FOUND)
+    # Check if the current commit has an exact tag match
     execute_process(
-        COMMAND ${GIT_EXECUTABLE} describe --tags --always
+        COMMAND ${GIT_EXECUTABLE} describe --tags --exact-match
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        RESULT_VARIABLE GIT_RESULT
-        OUTPUT_VARIABLE GIT_VERSION
+        RESULT_VARIABLE GIT_TAG_RESULT
+        OUTPUT_VARIABLE GIT_TAG_VERSION
         ERROR_QUIET
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
+    if (${GIT_TAG_RESULT} EQUAL 0)
+        # We're on a tagged commit, use the tag
+        set(GIT_VERSION "${GIT_TAG_VERSION}")
+        set(GIT_RESULT 0)
+    else()
+        # No exact tag, use vdev-<commit_count>
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            RESULT_VARIABLE GIT_RESULT
+            OUTPUT_VARIABLE GIT_COMMIT_COUNT
+            ERROR_QUIET
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if (${GIT_RESULT} EQUAL 0)
+            set(GIT_VERSION "vdev-${GIT_COMMIT_COUNT}")
+        endif()
+    endif()
 endif(GIT_FOUND)
 if (NOT GIT_FOUND OR NOT ${GIT_RESULT} EQUAL 0)
     if (NOT ${GIT_RESULT} EQUAL 0)
