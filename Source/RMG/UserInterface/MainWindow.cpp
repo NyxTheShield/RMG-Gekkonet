@@ -44,6 +44,7 @@
 #include <QStyleFactory>
 #include <QActionGroup> 
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QSettings>
@@ -2317,8 +2318,9 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
     std::string gameList;
     QMap<QString, CoreRomSettings> romData = this->ui_Widget_RomBrowser->GetModelData();
 
-    // Collect and sort GoodNames alphabetically for Kaillera
-    // (n02 creates submenus by first letter, so games must be sorted by name)
+    // Collect and sort game names alphabetically for Kaillera.
+    // Fallback to filename when GoodName is empty/invalid to avoid creating
+    // an empty first entry in the null-delimited list.
     std::vector<std::string> goodNames;
     for (auto it = romData.begin(); it != romData.end(); ++it)
     {
@@ -2330,7 +2332,22 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
         {
             goodName = goodName.substr(0, goodName.size() - suffix.size());
         }
-        goodNames.push_back(goodName);
+
+        QString displayName = QString::fromStdString(goodName).trimmed();
+        if (displayName.isEmpty())
+        {
+            QFileInfo fileInfo(it.key());
+            displayName = fileInfo.completeBaseName().trimmed();
+            if (displayName.isEmpty())
+            {
+                displayName = fileInfo.fileName().trimmed();
+            }
+        }
+
+        if (!displayName.isEmpty())
+        {
+            goodNames.push_back(displayName.toStdString());
+        }
     }
     std::sort(goodNames.begin(), goodNames.end(), [](const std::string& a, const std::string& b) {
         return QString::fromStdString(a).compare(QString::fromStdString(b), Qt::CaseInsensitive) < 0;
