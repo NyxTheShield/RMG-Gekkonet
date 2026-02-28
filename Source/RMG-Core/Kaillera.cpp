@@ -9,57 +9,26 @@
  */
 #define CORE_INTERNAL
 #include "Kaillera.hpp"
+#include "Settings.hpp"
 #include "Error.hpp"
 
 #ifdef _WIN32
 
-#include <windows.h>
+#include "n02_client.h"
+#include "kailleraclient.h"
+
 #include <cstring>
-
-//
-// Kaillera API Structures and Types
-//
-
-typedef struct {
-    char *appName;
-    char *gameList;
-    int (WINAPI *gameCallback)(char *game, int player, int numplayers);
-    void (WINAPI *chatReceivedCallback)(char *nick, char *text);
-    void (WINAPI *clientDroppedCallback)(char *nick, int playernb);
-    void (WINAPI *moreInfosCallback)(char *gamename);
-} kailleraInfos;
-
-// Kaillera function pointers
-typedef void (WINAPI *kailleraGetVersion_t)(char *version);
-typedef int (WINAPI *kailleraInit_t)(void);
-typedef void (WINAPI *kailleraShutdown_t)(void);
-typedef void (WINAPI *kailleraSetInfos_t)(kailleraInfos *infos);
-typedef int (WINAPI *kailleraSelectServerDialog_t)(HWND parent);
-typedef int (WINAPI *kailleraModifyPlayValues_t)(void *values, int size);
-typedef void (WINAPI *kailleraChatSend_t)(char *text);
-typedef void (WINAPI *kailleraEndGame_t)(void);
 
 //
 // Static Variables
 //
 
-static HMODULE s_KailleraDLL = nullptr;
 static bool s_Initialized = false;
 static bool s_GameActive = false;
 static int s_PlayerNumber = 0; // 0 = not in netplay, 1-4 = player number
 static int s_NumPlayers = 0;   // Total number of players in the game
 static std::string s_AppName;
 static std::string s_GameList;
-
-// Kaillera function pointers
-static kailleraGetVersion_t kailleraGetVersion = nullptr;
-static kailleraInit_t kailleraInit = nullptr;
-static kailleraShutdown_t kailleraShutdown = nullptr;
-static kailleraSetInfos_t kailleraSetInfos = nullptr;
-static kailleraSelectServerDialog_t kailleraSelectServerDialog = nullptr;
-static kailleraModifyPlayValues_t kailleraModifyPlayValues = nullptr;
-static kailleraChatSend_t kailleraChatSend = nullptr;
-static kailleraEndGame_t kailleraEndGame = nullptr;
 
 // Callback storage
 static CoreKaillera::GameStartCallback s_GameStartCallback;
@@ -68,10 +37,10 @@ static CoreKaillera::ClientDroppedCallback s_ClientDroppedCallback;
 static CoreKaillera::MoreInfosCallback s_MoreInfosCallback;
 
 //
-// C Callback Bridges (called by Kaillera from its internal thread)
+// C Callback Bridges (called by n02 from its internal thread)
 //
 
-static int WINAPI GameCallbackBridge(char *game, int player, int numplayers)
+static int GameCallbackBridge(char *game, int player, int numplayers)
 {
     // Store player number and total player count
     s_PlayerNumber = player;
@@ -84,7 +53,7 @@ static int WINAPI GameCallbackBridge(char *game, int player, int numplayers)
     {
         try
         {
-            s_GameStartCallback(std::string(game), player, numplayers);
+            s_GameStartCallback(std::string(game ? game : ""), player, numplayers);
             return 0; // Success
         }
         catch (...)
@@ -96,13 +65,13 @@ static int WINAPI GameCallbackBridge(char *game, int player, int numplayers)
     return 0;
 }
 
-static void WINAPI ChatReceivedCallbackBridge(char *nick, char *text)
+static void ChatReceivedCallbackBridge(char *nick, char *text)
 {
     if (s_ChatReceivedCallback)
     {
         try
         {
-            s_ChatReceivedCallback(std::string(nick), std::string(text));
+            s_ChatReceivedCallback(std::string(nick ? nick : ""), std::string(text ? text : ""));
         }
         catch (...)
         {
@@ -111,13 +80,13 @@ static void WINAPI ChatReceivedCallbackBridge(char *nick, char *text)
     }
 }
 
-static void WINAPI ClientDroppedCallbackBridge(char *nick, int playernb)
+static void ClientDroppedCallbackBridge(char *nick, int playernb)
 {
     if (s_ClientDroppedCallback)
     {
         try
         {
-            s_ClientDroppedCallback(std::string(nick), playernb);
+            s_ClientDroppedCallback(std::string(nick ? nick : ""), playernb);
         }
         catch (...)
         {
@@ -126,62 +95,19 @@ static void WINAPI ClientDroppedCallbackBridge(char *nick, int playernb)
     }
 }
 
-static void WINAPI MoreInfosCallbackBridge(char *gamename)
+static void MoreInfosCallbackBridge(char *gamename)
 {
     if (s_MoreInfosCallback)
     {
         try
         {
-            s_MoreInfosCallback(std::string(gamename));
+            s_MoreInfosCallback(std::string(gamename ? gamename : ""));
         }
         catch (...)
         {
             // Ignore errors in callback
         }
     }
-}
-
-//
-// Helper Functions
-//
-
-static bool LoadKailleraDLL(void)
-{
-    if (s_KailleraDLL != nullptr)
-    {
-        return true; // Already loaded
-    }
-
-    // Try to load kailleraclient.dll from current directory
-    s_KailleraDLL = LoadLibraryA("kailleraclient.dll");
-    if (s_KailleraDLL == nullptr)
-    {
-        CoreSetError("Failed to load kailleraclient.dll. Make sure it's in the same directory as RMG-K.exe");
-        return false;
-    }
-
-    // Load all required functions
-    kailleraGetVersion = (kailleraGetVersion_t)GetProcAddress(s_KailleraDLL, "kailleraGetVersion");
-    kailleraInit = (kailleraInit_t)GetProcAddress(s_KailleraDLL, "kailleraInit");
-    kailleraShutdown = (kailleraShutdown_t)GetProcAddress(s_KailleraDLL, "kailleraShutdown");
-    kailleraSetInfos = (kailleraSetInfos_t)GetProcAddress(s_KailleraDLL, "kailleraSetInfos");
-    kailleraSelectServerDialog = (kailleraSelectServerDialog_t)GetProcAddress(s_KailleraDLL, "kailleraSelectServerDialog");
-    kailleraModifyPlayValues = (kailleraModifyPlayValues_t)GetProcAddress(s_KailleraDLL, "kailleraModifyPlayValues");
-    kailleraChatSend = (kailleraChatSend_t)GetProcAddress(s_KailleraDLL, "kailleraChatSend");
-    kailleraEndGame = (kailleraEndGame_t)GetProcAddress(s_KailleraDLL, "kailleraEndGame");
-
-    // Verify all functions were loaded
-    if (!kailleraGetVersion || !kailleraInit || !kailleraShutdown ||
-        !kailleraSetInfos || !kailleraSelectServerDialog || !kailleraModifyPlayValues ||
-        !kailleraChatSend || !kailleraEndGame)
-    {
-        CoreSetError("Invalid kailleraclient.dll - missing required functions");
-        FreeLibrary(s_KailleraDLL);
-        s_KailleraDLL = nullptr;
-        return false;
-    }
-
-    return true;
 }
 
 //
@@ -195,25 +121,26 @@ CORE_EXPORT bool CoreInitKaillera(void)
         return true; // Already initialized
     }
 
-    // Load DLL
-    if (!LoadKailleraDLL())
-    {
-        return false;
-    }
-
-    // Check version
-    char version[16];
-    kailleraGetVersion(version);
-    // Version should be "0.9" or compatible
-    // We don't enforce a specific version for now
-
-    // Initialize Kaillera
-    int ret = kailleraInit();
+    // Initialize n02 subsystem (sockets, settings, modules)
+    int ret = n02::init();
     if (ret != 0)
     {
         CoreSetError("Kaillera initialization failed with error code: " + std::to_string(ret));
         return false;
     }
+
+    // Verify version
+    char version[16];
+    n02::getVersion(version);
+
+    // Load settings from RMG-K config into n02 globals
+    int mode = CoreSettingsGetIntValue(SettingsID::Kaillera_ActiveMode);
+    n02::activateMode(mode);
+
+    kaillera_spoof_ping = CoreSettingsGetIntValue(SettingsID::Kaillera_SpoofPing);
+    kaillera_30fps_mode = CoreSettingsGetBoolValue(SettingsID::Kaillera_30fpsMode) ? 1 : 0;
+    p2p_frame_delay_override = CoreSettingsGetIntValue(SettingsID::Kaillera_FrameDelay);
+    p2p_30fps_mode = CoreSettingsGetBoolValue(SettingsID::Kaillera_30fpsMode) ? 1 : 0;
 
     s_Initialized = true;
     s_GameActive = false;
@@ -234,31 +161,14 @@ CORE_EXPORT bool CoreShutdownKaillera(void)
         CoreEndKailleraGame();
     }
 
-    // Shutdown Kaillera
-    if (kailleraShutdown)
-    {
-        kailleraShutdown();
-    }
+    // Save settings back to RMG-K config
+    CoreSettingsSetValue(SettingsID::Kaillera_ActiveMode, n02::getActiveMode());
+
+    // Shutdown n02 subsystem
+    n02::shutdown();
 
     s_Initialized = false;
     s_GameActive = false;
-
-    // Unload the DLL to close any Kaillera windows
-    if (s_KailleraDLL != nullptr)
-    {
-        FreeLibrary(s_KailleraDLL);
-        s_KailleraDLL = nullptr;
-
-        // Clear function pointers
-        kailleraGetVersion = nullptr;
-        kailleraInit = nullptr;
-        kailleraShutdown = nullptr;
-        kailleraSetInfos = nullptr;
-        kailleraSelectServerDialog = nullptr;
-        kailleraModifyPlayValues = nullptr;
-        kailleraChatSend = nullptr;
-        kailleraEndGame = nullptr;
-    }
 
     return true;
 }
@@ -276,13 +186,8 @@ CORE_EXPORT bool CoreShowKailleraServerDialog(void* parentHwnd)
         return false;
     }
 
-    // Show Kaillera's server selection dialog
-    int ret = kailleraSelectServerDialog((HWND)parentHwnd);
-    if (ret != 0)
-    {
-        CoreSetError("Failed to connect to Kaillera server");
-        return false;
-    }
+    // Show n02 server dialog (blocking in Phase 1, Qt-driven in Phase 6)
+    n02::selectServerDialog(parentHwnd);
 
     return true;
 }
@@ -294,14 +199,8 @@ CORE_EXPORT int CoreModifyKailleraPlayValues(void* values, int size)
         return -1; // Not in netplay mode
     }
 
-    if (!kailleraModifyPlayValues)
-    {
-        return -1;
-    }
-
-    // Call Kaillera to synchronize input
-    int ret = kailleraModifyPlayValues(values, size);
-    return ret;
+    // Call n02 to synchronize input
+    return n02::modifyPlayValues(values, size);
 }
 
 CORE_EXPORT bool CoreKailleraSendChat(std::string text)
@@ -311,16 +210,11 @@ CORE_EXPORT bool CoreKailleraSendChat(std::string text)
         return false;
     }
 
-    if (!kailleraChatSend)
-    {
-        return false;
-    }
-
-    // Kaillera expects non-const char*
+    // n02 expects non-const char*
     char* textBuf = new char[text.length() + 1];
     strcpy(textBuf, text.c_str());
 
-    kailleraChatSend(textBuf);
+    n02::chatSend(textBuf);
 
     delete[] textBuf;
     return true;
@@ -333,10 +227,7 @@ CORE_EXPORT bool CoreEndKailleraGame(void)
         return false;
     }
 
-    if (kailleraEndGame)
-    {
-        kailleraEndGame();
-    }
+    n02::endGame();
 
     s_GameActive = false;
     return true;
@@ -344,7 +235,7 @@ CORE_EXPORT bool CoreEndKailleraGame(void)
 
 CORE_EXPORT void CoreMarkKailleraGameInactive(void)
 {
-    // Mark game as inactive without calling kailleraEndGame()
+    // Mark game as inactive without calling n02::endGame()
     // Used when the game ends due to network issues or another player dropping
     s_GameActive = false;
 }
@@ -361,7 +252,7 @@ CORE_EXPORT void CoreSetKailleraCallbacks(
     s_MoreInfosCallback = moreInfosCallback;
 
     // Set up kailleraInfos structure
-    if (s_Initialized && kailleraSetInfos)
+    if (s_Initialized)
     {
         static kailleraInfos infos;
 
@@ -387,7 +278,7 @@ CORE_EXPORT void CoreSetKailleraCallbacks(
         infos.clientDroppedCallback = s_ClientDroppedCallback ? ClientDroppedCallbackBridge : nullptr;
         infos.moreInfosCallback = s_MoreInfosCallback ? MoreInfosCallbackBridge : nullptr;
 
-        kailleraSetInfos(&infos);
+        n02::setInfos(&infos);
     }
 }
 
@@ -397,7 +288,7 @@ CORE_EXPORT bool CoreSetKailleraAppInfo(std::string appName, std::string gameLis
     s_GameList = gameList;
 
     // Update kailleraInfos if already initialized
-    if (s_Initialized && kailleraSetInfos)
+    if (s_Initialized)
     {
         // Trigger callback update which will also update app info
         CoreSetKailleraCallbacks(
@@ -433,22 +324,13 @@ CORE_EXPORT int CoreGetKailleraFrameDelay(void)
         return 0;
     }
 
-    typedef int (WINAPI *kailleraGetFrameDelay_t)();
-    kailleraGetFrameDelay_t kailleraGetFrameDelay =
-        (kailleraGetFrameDelay_t)GetProcAddress(s_KailleraDLL, "kailleraGetFrameDelay");
-
-    if (kailleraGetFrameDelay)
-    {
-        return kailleraGetFrameDelay();
-    }
-
-    return 0; // Fallback if function not available
+    return n02::getFrameDelay();
 }
 
 #else // !_WIN32
 
 // Stub implementations for non-Windows platforms
-// Kaillera is Windows-only (requires kailleraclient.dll)
+// Kaillera is Windows-only
 
 CORE_EXPORT bool CoreInitKaillera(void)
 {

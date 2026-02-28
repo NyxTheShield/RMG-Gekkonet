@@ -1,0 +1,161 @@
+/*
+ * Rosalie's Mupen GUI - https://github.com/Rosalie241/RMG
+ * Copyright (C) 2020 Rosalie Wanders <rosalie@mailbox.org>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+#ifndef KAILLERASERVERBROWSERDIALOG_HPP
+#define KAILLERASERVERBROWSERDIALOG_HPP
+
+#ifdef _WIN32
+
+#include <QDialog>
+#include <QTimer>
+#include <QTableWidget>
+#include <QTextBrowser>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QLabel>
+#include <QCheckBox>
+#include <QStackedWidget>
+#include <QSplitter>
+#include <QMenu>
+
+class KailleraServerBrowserDialog : public QDialog
+{
+    Q_OBJECT
+
+public:
+    explicit KailleraServerBrowserDialog(const QString& serverName, QWidget* parent = nullptr);
+    ~KailleraServerBrowserDialog() override;
+
+protected:
+    void reject() override;
+
+private slots:
+    // Lobby mode handlers
+    void onUserAdded(QString name, int ping, int status, unsigned short id, char conn);
+    void onUserJoined(QString name, int ping, unsigned short id, char conn);
+    void onUserLeft(QString name, QString quitMsg, unsigned short id);
+    void onGameAdded(QString gameName, unsigned int id, QString emulator, QString owner, QString users, char status);
+    void onGameCreated(QString gameName, unsigned int id, QString emulator, QString owner);
+    void onGameClosed(unsigned int id);
+    void onGameStatusChanged(unsigned int id, char status, int players, int maxPlayers);
+    void onChatReceived(QString name, QString message);
+    void onMotdReceived(QString name, QString message);
+    void onLoginStatus(QString message);
+    void onError(QString message);
+
+    // Game room handlers
+    void onUserGameCreated();
+    void onUserGameJoined();
+    void onUserGameClosed();
+    void onPlayerAdded(QString name, int ping, unsigned short id, char conn);
+    void onPlayerJoined(QString name, int ping, unsigned short uid, char conn);
+    void onPlayerLeft(QString name, unsigned short id);
+    void onGameChatReceived(QString name, QString message);
+    void onUserKicked();
+    void onPlayerDropped(QString name, int player);
+    void onGameStarted(QString game, int player, int numPlayers);
+    void onGameEnded();
+    void onNetsyncWait(int tx);
+
+    // Button actions
+    void onCreateOrSwap();
+    void onJoinGame();
+    void onStartGame();
+    void onDropGame();
+    void onLeaveGame();
+    void onKickPlayer();
+    void onLagStat();
+    void onOptions();
+    void onAdvertise();
+    void onSendLobbyChat();
+    void onSendGameChat();
+
+    // Context menus
+    void onUserListContextMenu(const QPoint& pos);
+    void onGameListContextMenu(const QPoint& pos);
+
+    // Stats timer
+    void onStatsTimer();
+
+private:
+    void setupUI();
+    QWidget* createGameListWidget();
+    QWidget* createGameRoomWidget();
+    void connectSignals();
+    void switchToLobby();
+    void switchToGameRoom();
+    void showBottomGameList();
+    void showBottomGameRoom();
+    void buildGameListMenu();
+    void populateGameSubmenus(QMenu* parentMenu);
+    void executeOptions();
+    void saveColumnWidths();
+    void restoreColumnWidths();
+    void updateTitle();
+    QString timestamp();
+    QString linkify(const QString& text);
+    QString connString(char conn);
+    QString userStatusString(char status);
+    QString gameStatusString(char status);
+    int findRowByText(QTableWidget* table, int column, const QString& text);
+    void updateUserStatus(const QString& username, const QString& status, int sortKey);
+
+    // Server info
+    QString m_serverName;
+
+    // Mode switching
+    QStackedWidget* m_bottomStack = nullptr;
+    bool m_inGameRoom = false;
+    bool m_isHost = false;
+    QString m_currentGameName;
+
+    // Top section (always visible)
+    QSplitter* m_topSplitter = nullptr;
+    QSplitter* m_roomSplitter = nullptr;
+    QTextBrowser* m_lobbyChat = nullptr;
+    QTableWidget* m_userTable = nullptr;
+    QLineEdit* m_lobbyChatInput = nullptr;
+    QPushButton* m_btnSendLobby = nullptr;
+    QPushButton* m_btnCreateSwap = nullptr;
+
+    // Bottom: Game table (page 0)
+    QTableWidget* m_gameTable = nullptr;
+
+    // Bottom: Game room (page 1)
+    QTableWidget* m_playerTable = nullptr;
+    QTextBrowser* m_gameChat = nullptr;
+    QLineEdit* m_gameChatInput = nullptr;
+    QPushButton* m_btnSendGame = nullptr;
+    QPushButton* m_btnStart = nullptr;
+    QPushButton* m_btnDrop = nullptr;
+    QPushButton* m_btnLeave = nullptr;
+    QPushButton* m_btnKick = nullptr;
+    QPushButton* m_btnLagStat = nullptr;
+    QPushButton* m_btnOptions = nullptr;
+    QPushButton* m_btnAdvertise = nullptr;
+    QCheckBox* m_recordCheck = nullptr;
+    QLineEdit* m_joinMsgInput = nullptr;
+    QLabel* m_joinMsgLabel = nullptr;
+    QLabel* m_fpsLabel = nullptr;
+    QLabel* m_delayLabel = nullptr;
+
+    // Stats timer
+    QTimer* m_statsTimer = nullptr;
+    int m_lastFrameCount = 0;
+    int m_lastPPS = 0;
+
+    // Game list menu for Create Game
+    QMenu* m_gameListMenu = nullptr;
+
+    // Find a row by matching a numeric value in the given column
+    int findRowByValue(QTableWidget* table, int column, unsigned int value);
+};
+
+#endif // _WIN32
+#endif // KAILLERASERVERBROWSERDIALOG_HPP

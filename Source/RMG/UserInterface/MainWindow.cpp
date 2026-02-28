@@ -23,6 +23,7 @@
 #include "Dialog/Netplay/CreateNetplaySessionDialog.hpp"
 #include "Dialog/Netplay/NetplaySessionDialog.hpp"
 #endif // NETPLAY
+#include "KailleraUIBridge.hpp"
 #include "UserInterface/EventFilter.hpp"
 #include "Utilities/QtKeyToSdl3Key.hpp"
 #include "Utilities/QtMessageBox.hpp"
@@ -38,6 +39,7 @@
 #ifdef NETPLAY
 #include <QWebSocket>
 #endif // NETPLAY
+#include <QApplication>
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QGuiApplication>
@@ -345,7 +347,25 @@ void MainWindow::closeEvent(QCloseEvent *event)
         this->netplaySessionDialog->close();
     }
 
-    // Shutdown Kaillera if active
+    // Close ALL top-level Kaillera dialogs, including those with nullptr parent
+    // (e.g. KailleraServerBrowserDialog, KailleraP2PDialog).
+    // Their reject() handlers call kaillera_disconnect() / p2p_disconnect() for
+    // graceful server disconnect before we tear down the session.
+    for (QWidget* w : QApplication::topLevelWidgets())
+    {
+        if (w != this && w->isVisible())
+        {
+            QDialog* dlg = qobject_cast<QDialog*>(w);
+            if (dlg)
+                dlg->close();
+        }
+    }
+
+    // Process events so the dialog chain fully unwinds
+    // (server browser close → netplay dialog close → showServerDialog returns)
+    QCoreApplication::processEvents();
+
+    // Shutdown Kaillera if still active (safety net — dialogs should have cleaned up)
     if (this->kailleraSessionManager != nullptr)
     {
         CoreEndKailleraGame();
@@ -2513,6 +2533,8 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
             this, &MainWindow::on_Kaillera_GameStarted);
     connect(this->kailleraSessionManager, &KailleraSessionManager::chatReceived,
             this, &MainWindow::on_Kaillera_ChatReceived);
+    connect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
+            this, &MainWindow::on_Kaillera_ChatReceived);
     connect(this->kailleraSessionManager, &KailleraSessionManager::playerDropped,
             this, &MainWindow::on_Kaillera_PlayerDropped);
     connect(this->kailleraSessionManager, &KailleraSessionManager::gameEnded,
@@ -2531,15 +2553,21 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
 
     // Dialog closed - clean up Kaillera session
     // (emulation may still be running - user can manually stop it)
-    delete this->kailleraSessionManager;
-    this->kailleraSessionManager = nullptr;
-    CoreShutdownKaillera();
+    // Guard: closeEvent may have already cleaned up if the main window was closed
+    if (this->kailleraSessionManager != nullptr)
+    {
+        disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
+                   this, &MainWindow::on_Kaillera_ChatReceived);
+        delete this->kailleraSessionManager;
+        this->kailleraSessionManager = nullptr;
+        CoreShutdownKaillera();
 
-    // Re-enable buttons and update UI
-    this->action_Netplay_BrowseSessions->setEnabled(true);
-    this->action_Netplay_Start->setEnabled(true);
-    this->action_System_StartRom->setEnabled(true);
-    this->updateUI(this->emulationThread->isRunning(), CoreIsEmulationPaused());
+        // Re-enable buttons and update UI
+        this->action_Netplay_BrowseSessions->setEnabled(true);
+        this->action_Netplay_Start->setEnabled(true);
+        this->action_System_StartRom->setEnabled(true);
+        this->updateUI(this->emulationThread->isRunning(), CoreIsEmulationPaused());
+    }
 #endif // NETPLAY
 }
 
@@ -2836,14 +2864,18 @@ QString MainWindow::findRomByName(QString gameName)
     }
 
     // Try substring match (if one contains the other)
-    for (auto it = romData.begin(); it != romData.end(); ++it)
+    if (!normalizedSearch.isEmpty())
     {
-        QString localName = QString::fromStdString(it.value().GoodName);
-        QString normalizedLocal = normalizeGameName(localName);
-
-        if (normalizedLocal.contains(normalizedSearch) || normalizedSearch.contains(normalizedLocal))
+        for (auto it = romData.begin(); it != romData.end(); ++it)
         {
-            return it.key();
+            QString localName = QString::fromStdString(it.value().GoodName);
+            QString normalizedLocal = normalizeGameName(localName);
+
+            if (!normalizedLocal.isEmpty() &&
+                (normalizedLocal.contains(normalizedSearch) || normalizedSearch.contains(normalizedLocal)))
+            {
+                return it.key();
+            }
         }
     }
 

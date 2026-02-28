@@ -30,7 +30,7 @@ if (KCA_DRAG_DROP)
 endif(KCA_DRAG_DROP)
 
 if (NETPLAY)
-    find_package(Qt6 COMPONENTS WebSockets REQUIRED)
+    find_package(Qt6 COMPONENTS WebSockets Network REQUIRED)
     add_definitions(-DNETPLAY)
 endif(NETPLAY)
 
@@ -93,6 +93,12 @@ endif(UPDATER)
 if (NETPLAY)
     list(APPEND RMG_SOURCES
         UserInterface/KailleraSessionManager.cpp
+        UserInterface/KailleraUIBridge.cpp
+        UserInterface/Dialog/Kaillera/KailleraNetplayDialog.cpp
+        UserInterface/Dialog/Kaillera/KailleraServerBrowserDialog.cpp
+        UserInterface/Dialog/Kaillera/KailleraOptionsDialog.cpp
+        UserInterface/Dialog/Kaillera/KailleraP2PDialog.cpp
+        UserInterface/Dialog/Kaillera/KailleraWaitingGamesDialog.cpp
         UserInterface/Dialog/Netplay/NetplayCommon.cpp
         UserInterface/Dialog/Netplay/CreateNetplaySessionDialog.cpp
         UserInterface/Dialog/Netplay/CreateNetplaySessionDialog.ui
@@ -157,6 +163,11 @@ if (KCA_DRAG_DROP)
 endif(KCA_DRAG_DROP)
 
 if (NETPLAY)
-    target_link_libraries(RMG Qt6::WebSockets)
+    target_link_libraries(RMG Qt6::WebSockets Qt6::Network)
+    if (WIN32)
+        target_include_directories(RMG PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../n02
+        )
+    endif(WIN32)
 endif(NETPLAY)
 

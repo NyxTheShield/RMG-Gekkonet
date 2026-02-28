@@ -145,14 +145,8 @@ jobs:
           $env:revision = git describe --tags --always
           echo "GIT_REVISION=$env:revision" >> $env:GITHUB_ENV
         shell: pwsh
-      - name: Download Kaillera Client
-        run: |
-          gh release download --repo Jay-Day/n02-rmg --pattern "*.zip" --dir .
-          Expand-Archive -Path *.zip -DestinationPath Data/ -Force
-          Remove-Item *.zip
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # n02 Kaillera client is now compiled as a static library (Source/n02/)
+      # No need to download kailleraclient.dll
       - name: Build RMG (Portable)
         run: |
           export src_dir="$(pwd)"
