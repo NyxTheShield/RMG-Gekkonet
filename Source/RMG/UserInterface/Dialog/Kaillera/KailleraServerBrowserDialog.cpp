@@ -71,8 +71,8 @@ QColor blendColors(const QColor& fg, const QColor& bg, int fgWeight)
 class ThinSplitterStyle final : public QProxyStyle
 {
 public:
-    explicit ThinSplitterStyle(QStyle* baseStyle)
-        : QProxyStyle(baseStyle)
+    explicit ThinSplitterStyle()
+        : QProxyStyle(nullptr)
     {
     }
 
@@ -162,6 +162,21 @@ KailleraServerBrowserDialog::~KailleraServerBrowserDialog()
 
 void KailleraServerBrowserDialog::reject()
 {
+    if (m_isClosing)
+    {
+        return;
+    }
+    m_isClosing = true;
+
+    if (m_statsTimer)
+    {
+        m_statsTimer->stop();
+    }
+
+    // Prevent any further lobby/game callbacks from targeting this dialog
+    // while the network core is being torn down.
+    QObject::disconnect(&KailleraUIBridge::instance(), nullptr, this, nullptr);
+
     // Save geometry and splitter state
     CoreSettingsSetValue(SettingsID::Kaillera_BrowserGeometry,
         saveGeometry().toBase64().toStdString());
@@ -179,6 +194,7 @@ void KailleraServerBrowserDialog::reject()
     {
         kaillera_leave_game();
     }
+
     kaillera_disconnect(nullptr);
     kaillera_core_cleanup();
 
@@ -233,7 +249,8 @@ void KailleraServerBrowserDialog::setupUI()
         "  border: none;"
         "}"
         "QLabel#KailleraPaneTitle {"
-        "  font-weight: 700;"
+        "  font-weight: 400;"
+        "  font-size: 13px;"
         "  letter-spacing: 0.6px;"
         "}"
         "QLabel#KailleraPaneMeta {"
@@ -252,9 +269,12 @@ void KailleraServerBrowserDialog::setupUI()
         "  background-color: palette(window);"
         "  border: none;"
         "  border-bottom: 1px solid palette(mid);"
-        "  border-right: 1px solid palette(midlight);"
+        "  border-left: 1px solid palette(mid);"
         "  padding: 6px 8px;"
         "  font-weight: 600;"
+        "}"
+        "QHeaderView::section:first {"
+        "  border-left: none;"
         "}"
         "QWidget#KailleraChatComposer {"
         "  border: 1px solid palette(mid);"
@@ -371,8 +391,7 @@ void KailleraServerBrowserDialog::setupUI()
     m_topSplitter = new QSplitter(Qt::Horizontal, this);
     m_topSplitter->setObjectName("KailleraJoinedSplitter");
     m_topSplitter->setHandleWidth(1);
-    auto* topSplitterStyle = new ThinSplitterStyle(m_topSplitter->style());
-    topSplitterStyle->setParent(m_topSplitter);
+    auto* topSplitterStyle = new ThinSplitterStyle();
     m_topSplitter->setStyle(topSplitterStyle);
 
     auto* lobbyPane = new QWidget(this);
@@ -467,7 +486,7 @@ void KailleraServerBrowserDialog::setupUI()
 
     auto* usersBody = new QWidget(usersPane);
     auto* usersBodyLayout = new QVBoxLayout(usersBody);
-    usersBodyLayout->setContentsMargins(8, 8, 8, 8);
+    usersBodyLayout->setContentsMargins(0, 0, 1, 1);
     usersBodyLayout->setSpacing(0);
 
     m_userTable = new QTableWidget(0, 4, usersBody);
@@ -578,8 +597,7 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
     m_roomSplitter = new QSplitter(Qt::Horizontal, widget);
     m_roomSplitter->setObjectName("KailleraJoinedSplitter");
     m_roomSplitter->setHandleWidth(1);
-    auto* roomSplitterStyle = new ThinSplitterStyle(m_roomSplitter->style());
-    roomSplitterStyle->setParent(m_roomSplitter);
+    auto* roomSplitterStyle = new ThinSplitterStyle();
     m_roomSplitter->setStyle(roomSplitterStyle);
     auto* roomSplitter = m_roomSplitter;
 
@@ -655,11 +673,8 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
 
     auto* roomLobbiesPage = new QWidget(chatPane);
     auto* roomLobbiesLayout = new QVBoxLayout(roomLobbiesPage);
-    roomLobbiesLayout->setContentsMargins(8, 8, 8, 8);
-    roomLobbiesLayout->setSpacing(6);
-    auto* roomLobbiesHint = new QLabel("Open lobbies", roomLobbiesPage);
-    roomLobbiesHint->setObjectName("KailleraPaneMeta");
-    roomLobbiesLayout->addWidget(roomLobbiesHint);
+    roomLobbiesLayout->setContentsMargins(1, 0, 0, 1);
+    roomLobbiesLayout->setSpacing(0);
     m_roomLobbyTable = new QTableWidget(0, 4, roomLobbiesPage);
     m_roomLobbyTable->setObjectName("KailleraSurface");
     m_roomLobbyTable->setHorizontalHeaderLabels({"Game", "Host", "Status", "Users"});
@@ -710,7 +725,7 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
 
     auto* playersBody = new QWidget(playersPane);
     auto* playersBodyLayout = new QVBoxLayout(playersBody);
-    playersBodyLayout->setContentsMargins(8, 8, 8, 8);
+    playersBodyLayout->setContentsMargins(0, 0, 1, 1);
     playersBodyLayout->setSpacing(0);
 
     m_playerTable = new QTableWidget(0, 3, playersBody);
@@ -1005,15 +1020,9 @@ void KailleraServerBrowserDialog::refreshRoomLobbyTable()
         }
 
         const QString gameName = gameItem->text();
-        if (!m_currentGameName.isEmpty() && gameName == m_currentGameName)
-        {
-            continue;
-        }
         QTableWidgetItem* statusItem = m_gameTable->item(row, 4);
-        if (statusItem == nullptr || statusItem->text() != "Waiting")
-        {
+        if (statusItem == nullptr)
             continue;
-        }
 
         const int outRow = m_roomLobbyTable->rowCount();
         m_roomLobbyTable->insertRow(outRow);
@@ -1402,6 +1411,10 @@ void KailleraServerBrowserDialog::onGameAdded(QString gameName, unsigned int id,
     m_gameTable->setItem(row, 4, new StatusTableWidgetItem(gameStatusString(status), status));
     m_gameTable->setItem(row, 5, new QTableWidgetItem(users));
     m_gameTable->setSortingEnabled(true);
+    if (m_roomShowingLobbies)
+    {
+        refreshRoomLobbyTable();
+    }
     updateTitle();
 }
 
@@ -1421,6 +1434,10 @@ void KailleraServerBrowserDialog::onGameCreated(QString gameName, unsigned int i
     m_gameTable->setItem(row, 4, new StatusTableWidgetItem("Waiting", 0));
     m_gameTable->setItem(row, 5, new QTableWidgetItem("1/?"));
     m_gameTable->setSortingEnabled(true);
+    if (m_roomShowingLobbies)
+    {
+        refreshRoomLobbyTable();
+    }
 
     // Update owner's user status to Waiting (game hasn't started yet)
     updateUserStatus(owner, "Waiting", 0);
@@ -1448,6 +1465,10 @@ void KailleraServerBrowserDialog::onGameClosed(unsigned int id)
             updateUserStatus(nameItem->text(), "Idle", 1);
     }
 
+    if (m_roomShowingLobbies)
+    {
+        refreshRoomLobbyTable();
+    }
     updateTitle();
 }
 

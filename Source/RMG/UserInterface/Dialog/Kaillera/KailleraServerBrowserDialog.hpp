@@ -118,6 +118,7 @@ private:
     QStackedWidget* m_bottomStack = nullptr;
     bool m_inGameRoom = false;
     bool m_isHost = false;
+    bool m_isClosing = false;
     QString m_currentGameName;
 
     // Top section (always visible)
