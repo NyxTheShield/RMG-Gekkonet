@@ -36,8 +36,18 @@
 #include <string.h>
 #include <sys/types.h>
 #include <zlib.h>
-#include <unzip.h>
-#include <zip.h>
+#if defined(__has_include)
+#  if __has_include(<minizip/unzip.h>) && __has_include(<minizip/zip.h>)
+#    include <minizip/unzip.h>
+#    include <minizip/zip.h>
+#  else
+#    include <unzip.h>
+#    include <zip.h>
+#  endif
+#else
+#  include <unzip.h>
+#  include <zip.h>
+#endif
 
 #define M64P_CORE_PROTOTYPES 1
 #include "api/callbacks.h"
