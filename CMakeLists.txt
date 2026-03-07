@@ -11,6 +11,7 @@ option(NETPLAY          "Enables netplay" ON)
 option(USE_CCACHE       "Enables usage of ccache when ccache has been found" ON)
 option(NO_ASM           "Disables the usage of assembly in the mupen64plus-core" OFF)
 option(USE_ANGRYLION    "Enables building angrylion-rdp-plus which uses a non-GPL compliant license" OFF)
+set(KAILLERA_APP_VERSION_OVERRIDE "" CACHE STRING "Override Kaillera app version string advertised by RMG-K (dev/testing)")
 
 project(RMG)
 
@@ -49,6 +50,11 @@ if (NOT GIT_FOUND OR NOT ${GIT_RESULT} EQUAL 0)
         message(WARNING "git failed to retrieve the current revision, falling back to VERSION file!")
     endif()
     file(STRINGS "VERSION" GIT_VERSION)
+endif()
+
+if (KAILLERA_APP_VERSION_OVERRIDE)
+    message(STATUS "Overriding app version for dev testing: ${KAILLERA_APP_VERSION_OVERRIDE}")
+    set(GIT_VERSION "${KAILLERA_APP_VERSION_OVERRIDE}")
 endif()
 
 if (USE_CCACHE)

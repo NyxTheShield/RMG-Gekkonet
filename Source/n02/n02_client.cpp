@@ -38,6 +38,7 @@ extern void p2p_EndGame();
 extern int kaillera_modify_play_values(void * values, int size);
 extern void kaillera_game_chat_send(char * text);
 extern void kaillera_end_game();
+extern unsigned short kaillera_get_user_id();
 extern bool kaillera_SelectServerDlgStep();
 extern bool p2p_SelectServerDlgStep();
 extern int kaillera_get_delay();
@@ -100,8 +101,28 @@ char * gamelist = 0;
 // Recording system (std::fstream replacement for Win32 file I/O)
 ///////////////////////////////////////////////////////////////////////////////
 
-static char convert[256];
 static std::ofstream recording_file;
+static std::filesystem::path recording_directory_path = std::filesystem::path("records");
+
+static std::filesystem::path pathFromUtf8String(const std::string& utf8) {
+#if defined(__cpp_char8_t)
+    std::u8string converted;
+    converted.reserve(utf8.size());
+    for (unsigned char ch : utf8) {
+        converted.push_back(static_cast<char8_t>(ch));
+    }
+    return std::filesystem::path(converted);
+#else
+    return std::filesystem::u8path(utf8);
+#endif
+}
+
+static std::filesystem::path pathFromUtf8String(const char* utf8) {
+    if (utf8 == nullptr) {
+        return std::filesystem::path();
+    }
+    return pathFromUtf8String(std::string(utf8));
+}
 
 class RecordingBufferC {
 public:
@@ -150,6 +171,11 @@ static void close_recording() {
         if (RecordingBuffer.len() > 0)
             RecordingBuffer.write();
         recording_file.close();
+
+        auto& callbacks = n02::getUICallbacks();
+        if (callbacks.recordingFileClosedCallback) {
+            callbacks.recordingFileClosedCallback();
+        }
     }
 }
 
@@ -161,7 +187,7 @@ static int gameCallbackWrapper(char *game, int player, int numplayers_arg) {
         RecordingBuffer.reset();
 
         // Create records directory
-        std::filesystem::create_directories("records");
+        std::filesystem::create_directories(recording_directory_path);
 
         // Build filename: YYMMDDHHMMSS.krec
         time_t t = time(0);
@@ -169,17 +195,12 @@ static int gameCallbackWrapper(char *game, int player, int numplayers_arg) {
         char datePart[16];
         strftime(datePart, sizeof(datePart), "%y%m%d%H%M%S", lt);
 
-        char FileName[2000];
-        snprintf(FileName, sizeof(FileName), "./records/%s.krec", datePart);
-
-        for (unsigned int x = 0; x < strlen(FileName); x++) {
-            FileName[x] = convert[(unsigned char)FileName[x]];
-        }
-
-        recording_file.open(FileName, std::ios::binary | std::ios::trunc);
+        std::filesystem::path recordingPath = recording_directory_path / (std::string(datePart) + ".krec");
+        recording_file.open(recordingPath, std::ios::binary | std::ios::trunc);
 
         if (!recording_file.is_open()) {
-            kprintf("recording %s failed", FileName);
+            std::string pathString = recordingPath.string();
+            kprintf("recording %s failed", pathString.c_str());
         } else {
             char GameName[128];
             strncpy(GameName, (game != NULL) ? game : "", sizeof(GameName) - 1);
@@ -382,7 +403,8 @@ static bool player_play(const char* fn) {
     if (fn == nullptr)
         return false;
 
-    std::ifstream file(fn, std::ios::binary | std::ios::ate);
+    std::filesystem::path playbackPath = pathFromUtf8String(fn);
+    std::ifstream file(playbackPath, std::ios::binary | std::ios::ate);
     if (!file.is_open())
         return false;
 
@@ -513,25 +535,6 @@ int init() {
     mod_p2p.RecordingEnabled = p2p_RecordingEnabled_stub;
 
     activate_mode(active_mod_index);
-
-    // Initialize filename character conversion table for recordings
-    {
-        for (int x = 0; x < 256; x++)
-            convert[x] = '_';
-        for (char x = 'A'; x <= 'Z'; x++)
-            convert[(unsigned char)x] = x;
-        for (char x = '0'; x <= '9'; x++)
-            convert[(unsigned char)x] = x;
-        for (char x = 'a'; x <= 'z'; x++)
-            convert[(unsigned char)x] = x;
-        convert['['] = '[';
-        convert[0] = 0;
-        convert[']'] = ']';
-        convert['.'] = '.';
-        convert['\\'] = '\\';
-        convert['/'] = '/';
-        convert['-'] = '-';
-    }
 
     return 0;
 }
@@ -666,12 +669,27 @@ int getFrameDelay() {
     return 0;
 }
 
+unsigned short getUserId() {
+    if (active_mod_index == 1) {
+        return kaillera_get_user_id();
+    }
+    return 0;
+}
+
 int getActiveMode() {
     return active_mod_index;
 }
 
 bool activateMode(int mode) {
     return activate_mode(mode);
+}
+
+void setRecordsDirectory(const std::string& recordsDirectory) {
+    if (recordsDirectory.empty()) {
+        recording_directory_path = std::filesystem::path("records");
+    } else {
+        recording_directory_path = pathFromUtf8String(recordsDirectory);
+    }
 }
 
 bool isGameRunning() {

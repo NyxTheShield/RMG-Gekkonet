@@ -15,6 +15,7 @@
 #include <QDialog>
 #include <QTimer>
 #include <QTableWidget>
+#include <QListWidget>
 #include <QTextBrowser>
 #include <QLineEdit>
 #include <QPushButton>
@@ -79,6 +80,7 @@ private slots:
     // Context menus
     void onUserListContextMenu(const QPoint& pos);
     void onGameListContextMenu(const QPoint& pos);
+    void onPlayerListContextMenu(const QPoint& pos);
 
     // Stats timer
     void onStatsTimer();
@@ -92,17 +94,28 @@ private:
     void switchToGameRoom();
     void showBottomGameList();
     void showBottomGameRoom();
+    void setRoomChatSwapView(bool showLobbies);
+    void refreshRoomLobbyTable();
     void buildGameListMenu();
+    void requestCreateGame(const QString& gameName);
+    void addCreateMenuEntries(QMenu* parentMenu);
     void populateGameSubmenus(QMenu* parentMenu);
     void executeOptions();
     void saveColumnWidths();
     void restoreColumnWidths();
     void updateTitle();
-    QString timestamp();
+    void updateHeaderCounts();
+    int detectCurrentRoomMaxPlayers();
+    QString timestamp(const QString& baseColor = QString());
     QString linkify(const QString& text);
     QString connString(char conn);
     QString userStatusString(char status);
     QString gameStatusString(char status);
+    bool hasOpenSlot(QTableWidget* table, int row) const;
+    bool tryJoinGameFromTable(QTableWidget* table, int row, bool leaveCurrentGame);
+    void syncCurrentGameUsersCount();
+    void refreshPlayerCards();
+    int findPlayerIndexById(unsigned short id) const;
     int findRowByText(QTableWidget* table, int column, const QString& text);
     void updateUserStatus(const QString& username, const QString& status, int sortKey);
 
@@ -113,7 +126,11 @@ private:
     QStackedWidget* m_bottomStack = nullptr;
     bool m_inGameRoom = false;
     bool m_isHost = false;
+    bool m_isClosing = false;
     QString m_currentGameName;
+    unsigned int m_currentGameId = 0;
+    QString m_pendingJoinGameName;
+    unsigned int m_pendingJoinGameId = 0;
 
     // Top section (always visible)
     QSplitter* m_topSplitter = nullptr;
@@ -123,27 +140,30 @@ private:
     QLineEdit* m_lobbyChatInput = nullptr;
     QPushButton* m_btnSendLobby = nullptr;
     QPushButton* m_btnCreateSwap = nullptr;
+    QLabel* m_connectedPlayersCountLabel = nullptr;
 
     // Bottom: Game table (page 0)
     QTableWidget* m_gameTable = nullptr;
 
     // Bottom: Game room (page 1)
-    QTableWidget* m_playerTable = nullptr;
+    QListWidget* m_playerList = nullptr;
+    QStackedWidget* m_roomChatStack = nullptr;
+    QTableWidget* m_roomLobbyTable = nullptr;
+    bool m_roomShowingLobbies = false;
     QTextBrowser* m_gameChat = nullptr;
     QLineEdit* m_gameChatInput = nullptr;
     QPushButton* m_btnSendGame = nullptr;
+    QPushButton* m_btnSwapChat = nullptr;
     QPushButton* m_btnStart = nullptr;
     QPushButton* m_btnDrop = nullptr;
     QPushButton* m_btnLeave = nullptr;
-    QPushButton* m_btnKick = nullptr;
     QPushButton* m_btnLagStat = nullptr;
     QPushButton* m_btnOptions = nullptr;
     QPushButton* m_btnAdvertise = nullptr;
     QCheckBox* m_recordCheck = nullptr;
-    QLineEdit* m_joinMsgInput = nullptr;
-    QLabel* m_joinMsgLabel = nullptr;
     QLabel* m_fpsLabel = nullptr;
-    QLabel* m_delayLabel = nullptr;
+    QLabel* m_playersInGameCountLabel = nullptr;
+    int m_roomMaxPlayers = 0;
 
     // Stats timer
     QTimer* m_statsTimer = nullptr;

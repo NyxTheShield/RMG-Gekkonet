@@ -210,6 +210,10 @@ void KailleraUIBridge::registerCallbacks()
         emit kailleraErrorMessage(safeStr(msg));
     };
 
+    cb.recordingFileClosedCallback = [this]() {
+        emit recordingFileClosed();
+    };
+
     n02::setUICallbacks(cb);
 }
 

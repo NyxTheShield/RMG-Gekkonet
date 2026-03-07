@@ -2985,6 +2985,12 @@
                 <property name="icon">
                  <iconset theme="folder-open-line"/>
                 </property>
+                <property name="iconSize">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
                </widget>
               </item>
              </layout>
@@ -3011,6 +3017,12 @@
                 <property name="icon">
                  <iconset theme="folder-open-line"/>
                 </property>
+                <property name="iconSize">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
                </widget>
               </item>
              </layout>
@@ -3036,6 +3048,12 @@
                 </property>
                 <property name="icon">
                  <iconset theme="folder-open-line"/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
                 </property>
                </widget>
               </item>
@@ -3104,141 +3122,128 @@
          </widget>
          <widget class="QWidget" name="DDTab">
           <attribute name="title">
-           <string>64DD</string>
+           <string>Kaillera</string>
           </attribute>
           <layout class="QVBoxLayout" name="verticalLayout_6">
            <item>
-            <widget class="QGroupBox" name="groupBox_32">
+            <widget class="QGroupBox" name="kailleraSettingsGroupBox">
              <property name="title">
-              <string>Japanese Retail 64DD IPL ROM</string>
+              <string>Recording</string>
              </property>
-             <layout class="QHBoxLayout" name="horizontalLayout_88">
+             <layout class="QVBoxLayout" name="kailleraSettingsLayout">
               <item>
-               <widget class="QLineEdit" name="japaneseIPLRomLineEdit">
-                <property name="readOnly">
-                 <bool>true</bool>
+               <widget class="QCheckBox" name="kailleraRecordByDefaultCheckBox">
+                <property name="text">
+                 <string>Enable recording by default</string>
                 </property>
                </widget>
               </item>
               <item>
-               <widget class="QPushButton" name="changeJapaneseIPLRomPathButton">
+               <widget class="QLabel" name="kailleraRecordsFolderLabel">
                 <property name="text">
-                 <string>Change</string>
-                </property>
-                <property name="icon">
-                 <iconset theme="folder-open-line"/>
+                 <string>Records folder</string>
                 </property>
                </widget>
               </item>
               <item>
-               <widget class="QPushButton" name="clearJapaneseIPLRomPathButton">
+               <layout class="QHBoxLayout" name="kailleraRecordsFolderLayout">
+                <item>
+                 <widget class="QLineEdit" name="kailleraRecordsDirectoryLineEdit">
+                  <property name="readOnly">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="changeKailleraRecordsDirectoryButton">
+                  <property name="text">
+                   <string>Change</string>
+                  </property>
+                  <property name="icon">
+                   <iconset theme="folder-open-line"/>
+                  </property>
+                  <property name="iconSize">
+                   <size>
+                    <width>16</width>
+                    <height>16</height>
+                   </size>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="kailleraRecordingCapEnabledCheckBox">
                 <property name="text">
-                 <string/>
-                </property>
-                <property name="icon">
-                 <iconset theme="delete-bin-line"/>
+                 <string>Disable default recording above folder size cap</string>
                 </property>
                </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="kailleraRecordingCapLayout">
+                <item>
+                 <widget class="QLabel" name="kailleraRecordingCapLabel">
+                  <property name="text">
+                   <string>Cap size</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QSpinBox" name="kailleraRecordingCapMBSpinBox">
+                  <property name="minimum">
+                   <number>1</number>
+                  </property>
+                  <property name="maximum">
+                   <number>1048576</number>
+                  </property>
+                  <property name="value">
+                   <number>1024</number>
+                  </property>
+                  <property name="suffix">
+                   <string> MB</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer_16">
+                  <property name="orientation">
+                   <enum>Qt::Orientation::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
               </item>
              </layout>
             </widget>
            </item>
            <item>
-            <widget class="QGroupBox" name="groupBox_33">
+            <widget class="QGroupBox" name="kailleraNotificationsGroupBox">
              <property name="title">
-              <string>American Retail 64DD IPL ROM</string>
+              <string>Notifications</string>
              </property>
-             <layout class="QHBoxLayout" name="horizontalLayout_90">
+             <layout class="QVBoxLayout" name="kailleraNotificationsLayout">
               <item>
-               <widget class="QLineEdit" name="americanIPLRomLineEdit">
-                <property name="readOnly">
-                 <bool>true</bool>
+               <widget class="QCheckBox" name="kailleraFlashOnJoinCheckBox">
+                <property name="text">
+                 <string>Flash taskbar on player join</string>
                 </property>
                </widget>
               </item>
               <item>
-               <widget class="QPushButton" name="changeAmericanIPLRomPathButton">
+               <widget class="QCheckBox" name="kailleraBeepOnJoinCheckBox">
                 <property name="text">
-                 <string>Change</string>
-                </property>
-                <property name="icon">
-                 <iconset theme="folder-open-line"/>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="clearAmericanIPLRomPathButton">
-                <property name="text">
-                 <string/>
-                </property>
-                <property name="icon">
-                 <iconset theme="delete-bin-line"/>
+                 <string>Beep on player join</string>
                 </property>
                </widget>
               </item>
              </layout>
             </widget>
-           </item>
-           <item>
-            <widget class="QGroupBox" name="groupBox_34">
-             <property name="title">
-              <string>Development 64DD IPL ROM</string>
-             </property>
-             <layout class="QHBoxLayout" name="horizontalLayout_91">
-              <item>
-               <widget class="QLineEdit" name="developmentIPLRomLineEdit">
-                <property name="readOnly">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="changeDevelopmentIPLRomPathButton">
-                <property name="text">
-                 <string>Change</string>
-                </property>
-                <property name="icon">
-                 <iconset theme="folder-open-line"/>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="clearDevelopmentIPLRomPathButton">
-                <property name="text">
-                 <string/>
-                </property>
-                <property name="icon">
-                 <iconset theme="delete-bin-line"/>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </widget>
-           </item>
-           <item>
-            <layout class="QHBoxLayout" name="horizontalLayout_4">
-             <item>
-              <widget class="QLabel" name="label_3">
-               <property name="text">
-                <string>Disk save type</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QComboBox" name="diskSaveTypeComboBox">
-               <item>
-                <property name="text">
-                 <string>Full Disk Copy</string>
-                </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>RAM Area Only</string>
-                </property>
-               </item>
-              </widget>
-             </item>
-            </layout>
            </item>
            <item>
             <spacer name="verticalSpacer_2">
@@ -3248,52 +3253,10 @@
              <property name="sizeHint" stdset="0">
               <size>
                <width>20</width>
-               <height>248</height>
+               <height>40</height>
               </size>
              </property>
             </spacer>
-           </item>
-           <item>
-            <layout class="QHBoxLayout" name="emulationInfoLayout_3">
-             <item>
-              <widget class="QLabel" name="infoIconLabel_4">
-               <property name="sizePolicy">
-                <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-                 <horstretch>0</horstretch>
-                 <verstretch>0</verstretch>
-                </sizepolicy>
-               </property>
-               <property name="text">
-                <string/>
-               </property>
-               <property name="pixmap">
-                <pixmap>:/newPrefix/Resource/Info.ico</pixmap>
-               </property>
-               <property name="wordWrap">
-                <bool>false</bool>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLabel" name="label_59">
-               <property name="sizePolicy">
-                <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
-                 <horstretch>0</horstretch>
-                 <verstretch>0</verstretch>
-                </sizepolicy>
-               </property>
-               <property name="midLineWidth">
-                <number>1</number>
-               </property>
-               <property name="text">
-                <string>Changes will be applied on next emulation run</string>
-               </property>
-               <property name="textFormat">
-                <enum>Qt::TextFormat::PlainText</enum>
-               </property>
-              </widget>
-             </item>
-            </layout>
            </item>
           </layout>
          </widget>

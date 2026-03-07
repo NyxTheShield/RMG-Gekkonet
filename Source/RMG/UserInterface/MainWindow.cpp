@@ -23,7 +23,9 @@
 #include "Dialog/Netplay/CreateNetplaySessionDialog.hpp"
 #include "Dialog/Netplay/NetplaySessionDialog.hpp"
 #endif // NETPLAY
+#ifdef _WIN32
 #include "KailleraUIBridge.hpp"
+#endif
 #include "UserInterface/EventFilter.hpp"
 #include "Utilities/QtKeyToSdl3Key.hpp"
 #include "Utilities/QtMessageBox.hpp"
@@ -138,6 +140,9 @@ bool MainWindow::Init(QApplication* app, bool showUI, bool launchROM)
     this->initializeUI(launchROM);
     this->initializeActions();
     this->configureUI(app, showUI);
+#ifdef NETPLAY
+    this->refreshKailleraRecordingStorageStatus(true);
+#endif // NETPLAY
 
     this->connectActionSignals();
     this->configureActions();
@@ -1665,6 +1670,40 @@ void MainWindow::tryAutoStartNetplayOnStartup(void)
     });
 }
 
+void MainWindow::refreshKailleraRecordingStorageStatus(bool showStartupWarning)
+{
+    const bool overCap = CoreRefreshKailleraRecordingStorageStatus();
+
+    if (!showStartupWarning || !overCap || !this->ui_ShowStatusbar)
+    {
+        return;
+    }
+
+    int capMB = CoreSettingsGetIntValue(SettingsID::Kaillera_RecordingCapMB);
+    if (capMB < 1)
+    {
+        capMB = 1;
+    }
+
+    const uint64_t bytes = CoreGetKailleraRecordingStorageBytes();
+    QString usageText;
+    if (bytes >= (1024ULL * 1024ULL * 1024ULL))
+    {
+        const double gib = static_cast<double>(bytes) / (1024.0 * 1024.0 * 1024.0);
+        usageText = QString::number(gib, 'f', 2) + " GB";
+    }
+    else
+    {
+        const double mib = static_cast<double>(bytes) / (1024.0 * 1024.0);
+        usageText = QString::number(mib, 'f', 1) + " MB";
+    }
+
+    this->ui_StatusBar_Label->setText(
+        QString("Kaillera recordings folder is over cap (%1 used / %2 MB cap). Record game defaults to off.")
+            .arg(usageText)
+            .arg(capMB));
+}
+
 void MainWindow::on_RomBrowser_RomListRefreshFinished(bool canceled)
 {
     if (canceled)
@@ -2550,8 +2589,12 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
             this, &MainWindow::on_Kaillera_GameStarted);
     connect(this->kailleraSessionManager, &KailleraSessionManager::chatReceived,
             this, &MainWindow::on_Kaillera_ChatReceived);
+#ifdef _WIN32
     connect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
             this, &MainWindow::on_Kaillera_ChatReceived);
+    connect(&KailleraUIBridge::instance(), &KailleraUIBridge::recordingFileClosed,
+            this, &MainWindow::on_Kaillera_RecordingFileClosed);
+#endif
     connect(this->kailleraSessionManager, &KailleraSessionManager::playerDropped,
             this, &MainWindow::on_Kaillera_PlayerDropped);
     connect(this->kailleraSessionManager, &KailleraSessionManager::gameEnded,
@@ -2573,8 +2616,12 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
     // Guard: closeEvent may have already cleaned up if the main window was closed
     if (this->kailleraSessionManager != nullptr)
     {
+#ifdef _WIN32
         disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
                    this, &MainWindow::on_Kaillera_ChatReceived);
+        disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::recordingFileClosed,
+                   this, &MainWindow::on_Kaillera_RecordingFileClosed);
+#endif
         delete this->kailleraSessionManager;
         this->kailleraSessionManager = nullptr;
         CoreShutdownKaillera();
@@ -2720,6 +2767,11 @@ void MainWindow::on_Kaillera_GameEnded(void)
 }
 
 #ifdef NETPLAY
+void MainWindow::on_Kaillera_RecordingFileClosed(void)
+{
+    this->refreshKailleraRecordingStorageStatus(false);
+}
+
 bool MainWindow::handleNetplayChatKeyPress(QKeyEvent *event)
 {
     if (!CoreIsEmulationRunning())

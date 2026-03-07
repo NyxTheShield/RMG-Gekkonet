@@ -132,6 +132,7 @@ class SettingsDialog : public QDialog, private Ui::SettingsDialog
 #endif
     void setIconsForEmulationInfoText(void);
     void hideEmulationInfoText(void);
+    void updateKailleraRecordingCapControls(void);
 
     void chooseDirectory(QLineEdit *, QString caption);
     void chooseFile(QLineEdit *, QString caption, QString filter = "", QStringList md5List = {});
@@ -149,14 +150,9 @@ class SettingsDialog : public QDialog, private Ui::SettingsDialog
     void on_changeScreenShotDirButton_clicked(void);
     void on_changeSaveStateDirButton_clicked(void);
     void on_changeSaveSramDirButton_clicked(void);
-
-    void on_changeJapaneseIPLRomPathButton_clicked(void);
-    void on_changeAmericanIPLRomPathButton_clicked(void);
-    void on_changeDevelopmentIPLRomPathButton_clicked(void);
-
-    void on_clearJapaneseIPLRomPathButton_clicked(void);
-    void on_clearAmericanIPLRomPathButton_clicked(void);
-    void on_clearDevelopmentIPLRomPathButton_clicked(void);
+    void on_changeKailleraRecordsDirectoryButton_clicked(void);
+    void on_kailleraRecordByDefaultCheckBox_toggled(bool checked);
+    void on_kailleraRecordingCapEnabledCheckBox_toggled(bool checked);
 
     void on_changeBackgroundColorButton_clicked(void);
     void on_changeTextColorButton_clicked(void);

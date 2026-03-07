@@ -77,6 +77,7 @@ signals:
     void kailleraGameEnded();
     void kailleraDebugMessage(QString message);
     void kailleraErrorMessage(QString message);
+    void recordingFileClosed();
 
 public:
     // Getter/setter for the selected frame delay (used by p2p_getSelectedDelay callback)

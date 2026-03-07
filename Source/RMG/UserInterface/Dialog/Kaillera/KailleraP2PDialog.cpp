@@ -219,6 +219,10 @@ void KailleraP2PDialog::setupUI()
     btnRow->addWidget(m_btnDrop);
     btnRow->addStretch();
     m_recordCheck = new QCheckBox("Record game", this);
+    const bool recordingEnabledByDefault = CoreGetKailleraEffectiveRecordingDefault();
+    extern bool n02_kaillera_recording_enabled;
+    n02_kaillera_recording_enabled = recordingEnabledByDefault;
+    m_recordCheck->setChecked(recordingEnabledByDefault);
     connect(m_recordCheck, &QCheckBox::toggled, this, [](bool checked) {
         extern bool n02_kaillera_recording_enabled;
         n02_kaillera_recording_enabled = checked;

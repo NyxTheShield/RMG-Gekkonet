@@ -26,8 +26,10 @@ KailleraSessionManager::KailleraSessionManager(QWidget* parent)
     , m_totalPlayers(0)
     , m_parentWidget(parent)
 {
+#ifdef _WIN32
     // Register n02 UI callbacks (detailed server browser / P2P UI events)
     KailleraUIBridge::instance().registerCallbacks();
+#endif
 
     // Register Kaillera callbacks
     // These callbacks are invoked from Kaillera's internal thread
@@ -72,8 +74,10 @@ KailleraSessionManager::~KailleraSessionManager()
         endGame();
     }
 
+#ifdef _WIN32
     // Unregister n02 UI callbacks
     KailleraUIBridge::instance().unregisterCallbacks();
+#endif
 }
 
 bool KailleraSessionManager::showServerDialog()

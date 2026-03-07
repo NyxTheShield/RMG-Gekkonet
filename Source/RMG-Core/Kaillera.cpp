@@ -12,12 +12,14 @@
 #include "Settings.hpp"
 #include "Error.hpp"
 
-#ifdef _WIN32
+#if defined(_WIN32) && defined(NETPLAY)
 
 #include "n02_client.h"
 #include "kailleraclient.h"
 
 #include <cstring>
+#include <filesystem>
+#include <system_error>
 
 //
 // Static Variables
@@ -29,12 +31,72 @@ static int s_PlayerNumber = 0; // 0 = not in netplay, 1-4 = player number
 static int s_NumPlayers = 0;   // Total number of players in the game
 static std::string s_AppName;
 static std::string s_GameList;
+static bool s_RecordingStorageStatusInitialized = false;
+static bool s_RecordingStorageOverCap = false;
+static uint64_t s_RecordingStorageBytes = 0;
 
 // Callback storage
 static CoreKaillera::GameStartCallback s_GameStartCallback;
 static CoreKaillera::ChatReceivedCallback s_ChatReceivedCallback;
 static CoreKaillera::ClientDroppedCallback s_ClientDroppedCallback;
 static CoreKaillera::MoreInfosCallback s_MoreInfosCallback;
+
+static std::filesystem::path pathFromUtf8String(const std::string& utf8)
+{
+#if defined(__cpp_char8_t)
+    std::u8string converted;
+    converted.reserve(utf8.size());
+    for (unsigned char ch : utf8)
+    {
+        converted.push_back(static_cast<char8_t>(ch));
+    }
+    return std::filesystem::path(converted);
+#else
+    return std::filesystem::u8path(utf8);
+#endif
+}
+
+static std::filesystem::path getKailleraRecordsDirectoryPath()
+{
+    std::string recordsDirectory = CoreSettingsGetStringValue(SettingsID::Kaillera_RecordsDirectory);
+    if (recordsDirectory.empty())
+    {
+        recordsDirectory = "records";
+    }
+    return pathFromUtf8String(recordsDirectory);
+}
+
+static uint64_t computeDirectorySizeBytes(const std::filesystem::path& directory)
+{
+    std::error_code ec;
+    if (!std::filesystem::exists(directory, ec))
+    {
+        return 0;
+    }
+
+    uint64_t totalBytes = 0;
+    std::filesystem::directory_iterator it(
+        directory, std::filesystem::directory_options::skip_permission_denied, ec);
+    std::filesystem::directory_iterator end;
+
+    while (!ec && it != end)
+    {
+        const auto& entry = *it;
+        if (entry.is_regular_file(ec))
+        {
+            uintmax_t fileSize = entry.file_size(ec);
+            if (!ec)
+            {
+                totalBytes += static_cast<uint64_t>(fileSize);
+            }
+        }
+
+        ec.clear();
+        it.increment(ec);
+    }
+
+    return totalBytes;
+}
 
 //
 // C Callback Bridges (called by n02 from its internal thread)
@@ -141,6 +203,7 @@ CORE_EXPORT bool CoreInitKaillera(void)
     kaillera_30fps_mode = CoreSettingsGetBoolValue(SettingsID::Kaillera_30fpsMode) ? 1 : 0;
     p2p_frame_delay_override = CoreSettingsGetIntValue(SettingsID::Kaillera_FrameDelay);
     p2p_30fps_mode = CoreSettingsGetBoolValue(SettingsID::Kaillera_30fpsMode) ? 1 : 0;
+    n02::setRecordsDirectory(CoreGetKailleraRecordsDirectory());
 
     s_Initialized = true;
     s_GameActive = false;
@@ -327,14 +390,76 @@ CORE_EXPORT int CoreGetKailleraFrameDelay(void)
     return n02::getFrameDelay();
 }
 
-#else // !_WIN32
+CORE_EXPORT std::string CoreGetKailleraRecordsDirectory(void)
+{
+    std::string recordsDirectory = CoreSettingsGetStringValue(SettingsID::Kaillera_RecordsDirectory);
+    if (recordsDirectory.empty())
+    {
+        recordsDirectory = "records";
+    }
+    return recordsDirectory;
+}
 
-// Stub implementations for non-Windows platforms
-// Kaillera is Windows-only
+CORE_EXPORT bool CoreRefreshKailleraRecordingStorageStatus(void)
+{
+    const bool recordingEnabled = CoreSettingsGetBoolValue(SettingsID::Kaillera_RecordingEnabled);
+    const bool capEnabled = CoreSettingsGetBoolValue(SettingsID::Kaillera_RecordingCapEnabled);
+    if (!recordingEnabled || !capEnabled)
+    {
+        s_RecordingStorageBytes = 0;
+        s_RecordingStorageStatusInitialized = true;
+        s_RecordingStorageOverCap = false;
+        return false;
+    }
+
+    s_RecordingStorageBytes = computeDirectorySizeBytes(getKailleraRecordsDirectoryPath());
+    s_RecordingStorageStatusInitialized = true;
+
+    int capMB = CoreSettingsGetIntValue(SettingsID::Kaillera_RecordingCapMB);
+    if (capMB < 1)
+    {
+        capMB = 1;
+    }
+    const uint64_t capBytes = static_cast<uint64_t>(capMB) * 1024ULL * 1024ULL;
+
+    s_RecordingStorageOverCap = (s_RecordingStorageBytes > capBytes);
+    return s_RecordingStorageOverCap;
+}
+
+CORE_EXPORT bool CoreIsKailleraRecordingStorageOverCap(void)
+{
+    return s_RecordingStorageStatusInitialized && s_RecordingStorageOverCap;
+}
+
+CORE_EXPORT uint64_t CoreGetKailleraRecordingStorageBytes(void)
+{
+    return s_RecordingStorageBytes;
+}
+
+CORE_EXPORT bool CoreGetKailleraEffectiveRecordingDefault(void)
+{
+    const bool recordingEnabled = CoreSettingsGetBoolValue(SettingsID::Kaillera_RecordingEnabled);
+    const bool capEnabled = CoreSettingsGetBoolValue(SettingsID::Kaillera_RecordingCapEnabled);
+    if (!recordingEnabled || !capEnabled)
+    {
+        return recordingEnabled;
+    }
+
+    if (!s_RecordingStorageStatusInitialized)
+    {
+        return recordingEnabled;
+    }
+
+    return !s_RecordingStorageOverCap;
+}
+
+#else // !(_WIN32 && NETPLAY)
+
+// Stub implementations for platforms/builds without integrated Kaillera support
 
 CORE_EXPORT bool CoreInitKaillera(void)
 {
-    CoreSetError("Kaillera is only supported on Windows");
+    CoreSetError("Kaillera is only available in Windows builds with netplay enabled");
     return false;
 }
 
@@ -351,7 +476,7 @@ CORE_EXPORT bool CoreHasInitKaillera(void)
 CORE_EXPORT bool CoreShowKailleraServerDialog(void* parentHwnd)
 {
     (void)parentHwnd;
-    CoreSetError("Kaillera is only supported on Windows");
+    CoreSetError("Kaillera is only available in Windows builds with netplay enabled");
     return false;
 }
 
@@ -417,4 +542,29 @@ CORE_EXPORT int CoreGetKailleraFrameDelay(void)
     return 0;
 }
 
-#endif // _WIN32
+CORE_EXPORT std::string CoreGetKailleraRecordsDirectory(void)
+{
+    return "records";
+}
+
+CORE_EXPORT bool CoreRefreshKailleraRecordingStorageStatus(void)
+{
+    return false;
+}
+
+CORE_EXPORT bool CoreIsKailleraRecordingStorageOverCap(void)
+{
+    return false;
+}
+
+CORE_EXPORT uint64_t CoreGetKailleraRecordingStorageBytes(void)
+{
+    return 0;
+}
+
+CORE_EXPORT bool CoreGetKailleraEffectiveRecordingDefault(void)
+{
+    return false;
+}
+
+#endif // defined(_WIN32) && defined(NETPLAY)

@@ -25,6 +25,7 @@ void __cdecl kaillera_error_callback(char * arg_0, ...);
 
 int kaillera_get_frames_count();
 int kaillera_get_delay();
+unsigned short kaillera_get_user_id();
 
 bool kaillera_is_connected();
 bool kaillera_core_initialize(int port, char * appname, char * username, char connection_setting);

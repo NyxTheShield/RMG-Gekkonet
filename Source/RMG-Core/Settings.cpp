@@ -223,6 +223,15 @@ static l_Setting get_setting(SettingsID settingId)
     case SettingsID::Kaillera_RecordingEnabled:
         setting = {SETTING_SECTION_KAILLERA, "RecordingEnabled", false};
         break;
+    case SettingsID::Kaillera_RecordsDirectory:
+        setting = {SETTING_SECTION_KAILLERA, "RecordsDirectory", std::string("records")};
+        break;
+    case SettingsID::Kaillera_RecordingCapEnabled:
+        setting = {SETTING_SECTION_KAILLERA, "RecordingCapEnabled", true};
+        break;
+    case SettingsID::Kaillera_RecordingCapMB:
+        setting = {SETTING_SECTION_KAILLERA, "RecordingCapMB", 1024};
+        break;
     case SettingsID::Kaillera_SpoofPing:
         setting = {SETTING_SECTION_KAILLERA, "SpoofPing", 0}; // 0=disabled, >0=spoof ping in ms
         break;

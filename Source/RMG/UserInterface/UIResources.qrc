@@ -37,6 +37,7 @@
   <file alias="icons/black/svg/screenshot-2-line.svg">Resource/icons/black/svg/screenshot-2-line.svg</file>
   <file alias="icons/black/svg/shut-down-line.svg">Resource/icons/black/svg/shut-down-line.svg</file>
   <file alias="icons/black/svg/speed-line.svg">Resource/icons/black/svg/speed-line.svg</file>
+  <file alias="icons/black/svg/swap-line.svg">Resource/icons/black/svg/swap-line.svg</file>
   <file alias="icons/black/svg/tools-line.svg">Resource/icons/black/svg/tools-line.svg</file>
   <file alias="icons/black/svg/search-line.svg">Resource/icons/black/svg/search-line.svg</file>
   <file alias="icons/black/svg/server-fill.svg">Resource/icons/black/svg/server-fill.svg</file>
@@ -77,6 +78,7 @@
   <file alias="icons/white/svg/screenshot-2-line.svg">Resource/icons/white/svg/screenshot-2-line.svg</file>
   <file alias="icons/white/svg/shut-down-line.svg">Resource/icons/white/svg/shut-down-line.svg</file>
   <file alias="icons/white/svg/speed-line.svg">Resource/icons/white/svg/speed-line.svg</file>
+  <file alias="icons/white/svg/swap-line.svg">Resource/icons/white/svg/swap-line.svg</file>
   <file alias="icons/white/svg/tools-line.svg">Resource/icons/white/svg/tools-line.svg</file>
   <file alias="icons/white/svg/search-line.svg">Resource/icons/white/svg/search-line.svg</file>
   <file alias="icons/white/svg/server-fill.svg">Resource/icons/white/svg/server-fill.svg</file>

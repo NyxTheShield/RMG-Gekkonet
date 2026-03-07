@@ -50,6 +50,11 @@
 
 #include <windows.h>
 
+static QString getKailleraRecordsDirectory()
+{
+    return QString::fromStdString(CoreGetKailleraRecordsDirectory());
+}
+
 KailleraNetplayDialog::KailleraNetplayDialog(QWidget* parent)
     : QDialog(parent)
 {
@@ -1164,6 +1169,17 @@ void KailleraNetplayDialog::onConnectServer()
     // Initialize kaillera core for server mode
     if (kaillera_core_initialize(0, APP, usernameBytes.data(), 1))
     {
+        const bool stateTimerWasRunning =
+            (m_stateMachineTimer != nullptr && m_stateMachineTimer->isActive());
+
+        // IMPORTANT: pause the n02 state-machine timer while connect runs on a
+        // worker thread. Both paths touch shared socket globals inside n02, and
+        // running them concurrently can corrupt state and crash on teardown.
+        if (stateTimerWasRunning)
+        {
+            m_stateMachineTimer->stop();
+        }
+
         // Run connect on a background thread so the UI stays responsive
         // (kaillera_core_connect blocks for up to 15 seconds on timeout)
         auto connectFuture = std::async(std::launch::async, [&]() {
@@ -1187,12 +1203,22 @@ void KailleraNetplayDialog::onConnectServer()
                 while (connectFuture.wait_for(std::chrono::milliseconds(50)) != std::future_status::ready)
                     QApplication::processEvents();
                 kaillera_core_cleanup();
+                if (stateTimerWasRunning && m_stateMachineTimer != nullptr)
+                {
+                    m_stateMachineTimer->start(1);
+                }
                 return;
             }
         }
         progress.close();
 
-        if (connectFuture.get())
+        const bool connected = connectFuture.get();
+        if (stateTimerWasRunning && m_stateMachineTimer != nullptr)
+        {
+            m_stateMachineTimer->start(1);
+        }
+
+        if (connected)
         {
             // Hide the netplay dialog while the server browser is open
             hide();
@@ -1504,10 +1530,11 @@ void KailleraNetplayDialog::populatePlaybackList()
     m_playbackTable->setSortingEnabled(false);
     m_playbackTable->setRowCount(0);
 
-    QDir recordsDir("./records");
+    const QString recordsPath = getKailleraRecordsDirectory();
+    QDir recordsDir(recordsPath);
     if (!recordsDir.exists())
     {
-        QDir(".").mkdir("records");
+        QDir().mkpath(recordsPath);
         m_playbackTable->setSortingEnabled(true);
         return;
     }
@@ -1751,7 +1778,7 @@ void KailleraNetplayDialog::onPlaybackPlay()
     QTableWidgetItem* fnItem = m_playbackTable->item(row, 5);
     if (!fnItem) return;
 
-    QString filename = "./records/" + fnItem->text();
+    QString filename = QDir(getKailleraRecordsDirectory()).filePath(fnItem->text());
     QByteArray pathBytes = filename.toUtf8();
 
     // Ensure playback mode is active
@@ -1798,7 +1825,7 @@ void KailleraNetplayDialog::onPlaybackDelete()
         return;
     }
 
-    QString fullPath = "./records/" + filename;
+    QString fullPath = QDir(getKailleraRecordsDirectory()).filePath(filename);
     QFile::remove(fullPath);
     populatePlaybackList();
 }
@@ -1810,8 +1837,9 @@ void KailleraNetplayDialog::onPlaybackRefresh()
 
 void KailleraNetplayDialog::onPlaybackOpenFolder()
 {
-    QDir(".").mkdir("records");
-    QDesktopServices::openUrl(QUrl::fromLocalFile(QDir("./records").absolutePath()));
+    const QString recordsPath = getKailleraRecordsDirectory();
+    QDir().mkpath(recordsPath);
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QDir(recordsPath).absolutePath()));
 }
 
 void KailleraNetplayDialog::onPlaybackDoubleClicked(int row, int column)

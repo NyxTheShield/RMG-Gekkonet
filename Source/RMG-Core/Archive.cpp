@@ -28,7 +28,15 @@
 #include <3rdParty/lzma/7z.h>
 
 // minizip includes
-#include <unzip.h>
+#if defined(__has_include)
+#  if __has_include(<minizip/unzip.h>)
+#    include <minizip/unzip.h>
+#  else
+#    include <unzip.h>
+#  endif
+#else
+#  include <unzip.h>
+#endif
 #ifndef ZNGLIB_H_
 /* sadly older minizip-ng versions didn't include zlib.h automatically,
  * so i.e voidpf would be undefined, in newer minizip-ng versions,
@@ -574,4 +582,3 @@ CORE_EXPORT bool CoreUnzip(std::filesystem::path file, std::filesystem::path pat
     unzClose(zipFile);
     return true;
 }
-
