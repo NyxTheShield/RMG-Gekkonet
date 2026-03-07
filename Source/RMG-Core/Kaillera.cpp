@@ -12,7 +12,7 @@
 #include "Settings.hpp"
 #include "Error.hpp"
 
-#ifdef _WIN32
+#if defined(_WIN32) && defined(NETPLAY)
 
 #include "n02_client.h"
 #include "kailleraclient.h"
@@ -453,14 +453,13 @@ CORE_EXPORT bool CoreGetKailleraEffectiveRecordingDefault(void)
     return !s_RecordingStorageOverCap;
 }
 
-#else // !_WIN32
+#else // !(_WIN32 && NETPLAY)
 
-// Stub implementations for non-Windows platforms
-// Kaillera is Windows-only
+// Stub implementations for platforms/builds without integrated Kaillera support
 
 CORE_EXPORT bool CoreInitKaillera(void)
 {
-    CoreSetError("Kaillera is only supported on Windows");
+    CoreSetError("Kaillera is only available in Windows builds with netplay enabled");
     return false;
 }
 
@@ -477,7 +476,7 @@ CORE_EXPORT bool CoreHasInitKaillera(void)
 CORE_EXPORT bool CoreShowKailleraServerDialog(void* parentHwnd)
 {
     (void)parentHwnd;
-    CoreSetError("Kaillera is only supported on Windows");
+    CoreSetError("Kaillera is only available in Windows builds with netplay enabled");
     return false;
 }
 
@@ -568,4 +567,4 @@ CORE_EXPORT bool CoreGetKailleraEffectiveRecordingDefault(void)
     return false;
 }
 
-#endif // _WIN32
+#endif // defined(_WIN32) && defined(NETPLAY)
