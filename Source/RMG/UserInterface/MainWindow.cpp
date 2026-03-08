@@ -25,6 +25,7 @@
 #endif // NETPLAY
 #ifdef _WIN32
 #include "KailleraUIBridge.hpp"
+#include "Dialog/Kaillera/KailleraPlaybackDialog.hpp"
 #endif
 #include "UserInterface/EventFilter.hpp"
 #include "Utilities/QtKeyToSdl3Key.hpp"
@@ -1613,6 +1614,7 @@ void MainWindow::connectActionSignals(void)
     connect(this->action_Settings_Settings, &QAction::triggered, this, &MainWindow::on_Action_Settings_Settings);
     connect(this->action_Settings_Plugins, &QAction::triggered, this, &MainWindow::on_Action_Settings_Plugins);
     connect(this->action_Toolbar_Input, &QAction::triggered, this, &MainWindow::on_Action_Settings_Input);
+    connect(this->action_Toolbar_Playback, &QAction::triggered, this, &MainWindow::on_Action_Playback);
 
     connect(this->action_View_Toolbar, &QAction::toggled, this, &MainWindow::on_Action_View_Toolbar);
     connect(this->action_View_StatusBar, &QAction::toggled, this, &MainWindow::on_Action_View_StatusBar);
@@ -2419,6 +2421,31 @@ void MainWindow::on_Action_Settings_Input(void)
         this->action_Settings_Input->setEnabled(hasInputConfig);
         this->action_Toolbar_Input->setEnabled(hasInputConfig);
     }
+}
+
+void MainWindow::on_Action_Playback(void)
+{
+#ifdef _WIN32
+    // If already open, just bring it to front
+    auto* existing = findChild<KailleraPlaybackDialog*>();
+    if (existing)
+    {
+        existing->raise();
+        existing->activateWindow();
+        return;
+    }
+
+    // Initialize Kaillera if not already initialized
+    if (!CoreInitKaillera())
+    {
+        this->showErrorMessage("Kaillera Error", QString::fromStdString(CoreGetError()));
+        return;
+    }
+
+    auto* dialog = new KailleraPlaybackDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+#endif // _WIN32
 }
 
 void MainWindow::on_Action_Settings_Settings(void)

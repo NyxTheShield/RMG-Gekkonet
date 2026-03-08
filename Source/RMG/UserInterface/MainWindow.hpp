@@ -260,6 +260,8 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     void on_RomBrowser_RomListRefreshFinished(bool canceled);
 #endif
 
+    void on_Action_Playback(void);
+
     void on_Action_Help_Github(void);
     void on_Action_Help_About(void);
     void on_Action_Help_Update(void);
