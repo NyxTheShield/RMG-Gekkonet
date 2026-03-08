@@ -13,6 +13,7 @@
 
 #include <backends/imgui_impl_opengl3.h>
 #include <imgui.h>
+#include <algorithm>
 #include <cmath>
 #include <chrono>
 #include <deque>
@@ -36,6 +37,10 @@ struct OnScreenDisplayMessageEntry
     std::string message;
     std::chrono::time_point<std::chrono::high_resolution_clock> time;
     OnScreenDisplayMessageType type;
+    bool skipSlideIn = false;
+    bool overflowEvicting = false;
+    std::chrono::time_point<std::chrono::high_resolution_clock> overflowEvictStart{};
+    float lastWindowHeight = 0.0f;
 };
 
 static std::deque<OnScreenDisplayMessageEntry> l_MessageQueue;
@@ -55,8 +60,94 @@ static float       l_MessageScale    = 1.25f;
 static size_t      l_KailleraChatMaxMessages = 5;
 static bool        l_FontsDirty      = true;
 static const float l_BaseFontSize    = 13.0f;
+static const float l_MessageFadeoutDurationSeconds = 0.26f;
+static const float l_MessageSlideInDurationSeconds = 0.31f;
 static bool        l_InputPromptActive = false;
 static std::string l_InputPrompt;
+
+static float OnScreenDisplayEaseOutCubic(float t)
+{
+    t = std::clamp(t, 0.0f, 1.0f);
+    const float inv = 1.0f - t;
+    return 1.0f - (inv * inv * inv);
+}
+
+static float OnScreenDisplayEaseInFadeOutAlpha(float t)
+{
+    t = std::clamp(t, 0.0f, 1.0f);
+    return 1.0f - (t * t);
+}
+
+static float OnScreenDisplayGetOverflowEvictProgress(const OnScreenDisplayMessageEntry& entry,
+    const std::chrono::time_point<std::chrono::high_resolution_clock>& currentTime)
+{
+    if (!entry.overflowEvicting)
+    {
+        return 0.0f;
+    }
+
+    if (l_MessageSlideInDurationSeconds <= 0.0f)
+    {
+        return 1.0f;
+    }
+
+    const float elapsed = std::chrono::duration<float>(currentTime - entry.overflowEvictStart).count();
+    return std::clamp(elapsed / l_MessageSlideInDurationSeconds, 0.0f, 1.0f);
+}
+
+static void OnScreenDisplayPruneCompletedOverflowEvictions(const std::chrono::time_point<std::chrono::high_resolution_clock>& currentTime)
+{
+    while (!l_MessageQueue.empty())
+    {
+        const OnScreenDisplayMessageEntry& entry = l_MessageQueue.front();
+        if (!entry.overflowEvicting || OnScreenDisplayGetOverflowEvictProgress(entry, currentTime) < 1.0f)
+        {
+            break;
+        }
+        l_MessageQueue.pop_front();
+    }
+}
+
+static void OnScreenDisplayEnforceQueueLimitWithFade(const std::chrono::time_point<std::chrono::high_resolution_clock>& currentTime)
+{
+    OnScreenDisplayPruneCompletedOverflowEvictions(currentTime);
+
+    size_t activeMessageCount = std::count_if(l_MessageQueue.begin(), l_MessageQueue.end(),
+        [](const OnScreenDisplayMessageEntry& entry) {
+            return !entry.overflowEvicting;
+        });
+
+    while (activeMessageCount > l_KailleraChatMaxMessages)
+    {
+        auto oldestActive = std::find_if(l_MessageQueue.begin(), l_MessageQueue.end(),
+            [](const OnScreenDisplayMessageEntry& entry) {
+                return !entry.overflowEvicting;
+            });
+        if (oldestActive == l_MessageQueue.end())
+        {
+            break;
+        }
+
+        // If chat input is open, one message slot is reserved for the prompt.
+        // Messages outside that prompt-visible window should not re-appear during overflow handling.
+        size_t promptVisibleLimit = l_KailleraChatMaxMessages;
+        if (l_InputPromptActive && promptVisibleLimit > 0)
+        {
+            promptVisibleLimit -= 1;
+        }
+        const bool oldestWouldBeHiddenByPrompt = l_InputPromptActive && (activeMessageCount > promptVisibleLimit);
+        if (oldestWouldBeHiddenByPrompt)
+        {
+            l_MessageQueue.erase(oldestActive);
+            activeMessageCount--;
+            continue;
+        }
+
+        oldestActive->overflowEvicting = true;
+        oldestActive->overflowEvictStart = currentTime;
+        activeMessageCount--;
+    }
+}
 
 static void OnScreenDisplayUpdateFonts(void)
 {
@@ -161,10 +252,7 @@ void OnScreenDisplayLoadSettings(void)
         l_TextAlpha = textColor.at(3) / 255.0f;
     }
 
-    while (l_MessageQueue.size() > l_KailleraChatMaxMessages)
-    {
-        l_MessageQueue.pop_front();
-    }
+    OnScreenDisplayEnforceQueueLimitWithFade(std::chrono::high_resolution_clock::now());
 }
 
 bool OnScreenDisplaySetDisplaySize(int width, int height)
@@ -204,10 +292,7 @@ void OnScreenDisplaySetMessage(std::string message)
     }
 
     l_MessageQueue.push_back({std::move(message), std::chrono::high_resolution_clock::now(), OnScreenDisplayMessageType::System});
-    while (l_MessageQueue.size() > l_KailleraChatMaxMessages)
-    {
-        l_MessageQueue.pop_front();
-    }
+    OnScreenDisplayEnforceQueueLimitWithFade(std::chrono::high_resolution_clock::now());
 }
 
 void OnScreenDisplaySetKailleraChatMessage(std::string message)
@@ -234,10 +319,34 @@ void OnScreenDisplaySetKailleraChatMessage(std::string message)
     }
 
     l_MessageQueue.push_back({std::move(message), std::chrono::high_resolution_clock::now(), OnScreenDisplayMessageType::Chat});
-    while (l_MessageQueue.size() > l_KailleraChatMaxMessages)
+    OnScreenDisplayEnforceQueueLimitWithFade(std::chrono::high_resolution_clock::now());
+}
+
+void OnScreenDisplaySetKailleraChatMessageImmediate(std::string message)
+{
+    if (!l_Initialized)
     {
-        l_MessageQueue.pop_front();
+        return;
     }
+
+    if (message.empty())
+    {
+        for (auto it = l_MessageQueue.begin(); it != l_MessageQueue.end();)
+        {
+            if (it->type == OnScreenDisplayMessageType::Chat)
+            {
+                it = l_MessageQueue.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+        return;
+    }
+
+    l_MessageQueue.push_back({std::move(message), std::chrono::high_resolution_clock::now(), OnScreenDisplayMessageType::Chat, true});
+    OnScreenDisplayEnforceQueueLimitWithFade(std::chrono::high_resolution_clock::now());
 }
 
 void OnScreenDisplaySetInputPrompt(std::string message)
@@ -266,18 +375,50 @@ void OnScreenDisplayRender(void)
     }
 
     const auto currentTime = std::chrono::high_resolution_clock::now();
+    OnScreenDisplayPruneCompletedOverflowEvictions(currentTime);
 
-    while (!l_MessageQueue.empty())
+    const float visibleDurationSeconds = static_cast<float>(std::max(l_MessageDuration, 0));
+
+    auto getMessageAgeSeconds = [&currentTime](const OnScreenDisplayMessageEntry& entry) -> float
     {
-        const auto ageSeconds = std::chrono::duration_cast<std::chrono::seconds>(currentTime - l_MessageQueue.front().time).count();
-        if (ageSeconds < l_MessageDuration)
+        return std::chrono::duration<float>(currentTime - entry.time).count();
+    };
+
+    auto getMessageFadeAlpha = [&](float ageSeconds) -> float
+    {
+        if (l_InputPromptActive || ageSeconds <= visibleDurationSeconds)
         {
+            return 1.0f;
+        }
+
+        const float fadeProgress = (ageSeconds - visibleDurationSeconds) / l_MessageFadeoutDurationSeconds;
+        return OnScreenDisplayEaseInFadeOutAlpha(fadeProgress);
+    };
+
+    auto getMessageSlideProgress = [](float ageSeconds) -> float
+    {
+        const float slideProgress = ageSeconds / l_MessageSlideInDurationSeconds;
+        return OnScreenDisplayEaseOutCubic(slideProgress);
+    };
+
+    auto getOverflowFadeAlpha = [&currentTime](const OnScreenDisplayMessageEntry& entry) -> float
+    {
+        const float evictProgress = OnScreenDisplayGetOverflowEvictProgress(entry, currentTime);
+        return OnScreenDisplayEaseInFadeOutAlpha(evictProgress);
+    };
+
+    bool hasVisibleQueueMessage = false;
+    for (const auto& messageEntry : l_MessageQueue)
+    {
+        const float alpha = getMessageFadeAlpha(getMessageAgeSeconds(messageEntry)) * getOverflowFadeAlpha(messageEntry);
+        if (alpha > 0.0f)
+        {
+            hasVisibleQueueMessage = true;
             break;
         }
-        l_MessageQueue.pop_front();
     }
 
-    const bool hasMessages = l_Enabled && (!l_MessageQueue.empty() || l_InputPromptActive);
+    const bool hasMessages = l_Enabled && (hasVisibleQueueMessage || l_InputPromptActive);
 
     if (!hasMessages)
     {
@@ -300,6 +441,11 @@ void OnScreenDisplayRender(void)
     {
         visibleQueueCount -= 1;
     }
+    const size_t overflowVisibleCount = std::count_if(l_MessageQueue.begin(), l_MessageQueue.end(),
+        [&getOverflowFadeAlpha](const OnScreenDisplayMessageEntry& entry) {
+            return entry.overflowEvicting && getOverflowFadeAlpha(entry) > 0.0f;
+        });
+    visibleQueueCount += overflowVisibleCount;
 
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(l_BackgroundRed, l_BackgroundGreen, l_BackgroundBlue, l_BackgroundAlpha));
     ImGui::PushStyleColor(ImGuiCol_Text,     ImVec4(l_TextRed, l_TextGreen, l_TextBlue, l_TextAlpha));
@@ -366,10 +512,28 @@ void OnScreenDisplayRender(void)
             break;
         }
 
-        const float posY = anchorBottom ? (baseY - offsetY) : (baseY + offsetY);
+        const float messageAgeSeconds = getMessageAgeSeconds(*messageIter);
+        const float overflowFadeAlpha = getOverflowFadeAlpha(*messageIter);
+        const float messageAlpha = getMessageFadeAlpha(messageAgeSeconds) * overflowFadeAlpha;
+        if (messageAlpha <= 0.0f)
+        {
+            continue;
+        }
+
+        const float slideProgress = messageIter->skipSlideIn ? 1.0f : getMessageSlideProgress(messageAgeSeconds);
+        float messageHeight = messageIter->lastWindowHeight;
+        if (messageHeight <= 0.0f)
+        {
+            const ImGuiStyle& style = ImGui::GetStyle();
+            messageHeight = ImGui::GetFontSize() + (style.WindowPadding.y * 2.0f);
+        }
+        const float slideOffsetY = (1.0f - slideProgress) * messageHeight;
+        const float animatedOffsetY = offsetY - slideOffsetY;
+        const float posY = anchorBottom ? (baseY - animatedOffsetY) : (baseY + animatedOffsetY);
         ImGui::SetNextWindowPos(ImVec2(baseX, posY), ImGuiCond_Always, pivot);
 
         const std::string windowName = "OSD Message##" + std::to_string(messageIndex);
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, messageAlpha);
         ImGui::Begin(windowName.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoFocusOnAppearing);
         if (maxWrapWidth > 0.0f)
         {
@@ -381,9 +545,12 @@ void OnScreenDisplayRender(void)
             ImGui::PopTextWrapPos();
         }
         const ImVec2 windowSize = ImGui::GetWindowSize();
+        messageIter->lastWindowHeight = windowSize.y;
         ImGui::End();
+        ImGui::PopStyleVar();
 
-        offsetY += windowSize.y * stackSpacingFactor;
+        const float stackContribution = windowSize.y * stackSpacingFactor * std::min(slideProgress, messageAlpha);
+        offsetY += stackContribution;
         renderedQueueCount++;
     }
 

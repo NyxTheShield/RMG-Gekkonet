@@ -70,6 +70,7 @@
 #endif
 
 #include <cstdlib>
+#include <chrono>
 #include <cmath>
 #include <algorithm>
 #include <vector>
@@ -96,6 +97,22 @@
 
 using namespace UserInterface;
 using namespace Utilities;
+
+#ifdef NETPLAY
+namespace
+{
+constexpr std::chrono::seconds kLocalEchoMaxAge(2);
+constexpr size_t kLocalEchoMaxEntries = 8;
+
+QString NormalizeOsdKailleraChatMessage(QString message)
+{
+    message = message.trimmed();
+    message.replace('\r', ' ');
+    message.replace('\n', ' ');
+    return message;
+}
+} // namespace
+#endif // NETPLAY
 
 MainWindow::MainWindow() : QMainWindow(nullptr)
 {
@@ -2675,11 +2692,40 @@ void MainWindow::on_Kaillera_ChatReceived(QString nickname, QString message)
     }
 
     nickname = nickname.trimmed();
-    message  = message.trimmed();
-    message.replace('\r', ' ');
-    message.replace('\n', ' ');
+    message = NormalizeOsdKailleraChatMessage(message);
 
-    OnScreenDisplaySetKailleraChatMessage("<" + nickname.toStdString() + "> " + message.toStdString());
+    const QString localNickname = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::Kaillera_Username)).trimmed();
+    if (!localNickname.isEmpty() && nickname.compare(localNickname, Qt::CaseInsensitive) == 0)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        while (!this->ui_PendingLocalChatEchoes.empty())
+        {
+            const auto age = now - this->ui_PendingLocalChatEchoes.front().time;
+            if (age <= kLocalEchoMaxAge)
+            {
+                break;
+            }
+            this->ui_PendingLocalChatEchoes.pop_front();
+        }
+
+        auto pendingEcho = std::find_if(this->ui_PendingLocalChatEchoes.begin(), this->ui_PendingLocalChatEchoes.end(),
+            [&message](const PendingLocalChatEcho& pending) {
+                return pending.message == message;
+            });
+        if (pendingEcho != this->ui_PendingLocalChatEchoes.end())
+        {
+            this->ui_PendingLocalChatEchoes.erase(pendingEcho);
+            return;
+        }
+
+        const std::string chatLine = "<" + nickname.toStdString() + "> " + message.toStdString();
+        OnScreenDisplaySetKailleraChatMessageImmediate(chatLine);
+    }
+    else
+    {
+        const std::string chatLine = "<" + nickname.toStdString() + "> " + message.toStdString();
+        OnScreenDisplaySetKailleraChatMessage(chatLine);
+    }
 #else
     (void)nickname;
     (void)message;
@@ -2709,6 +2755,7 @@ void MainWindow::on_Kaillera_GameEnded(void)
 
     OnScreenDisplaySetKailleraChatMessage("");
 #ifdef NETPLAY
+    this->ui_PendingLocalChatEchoes.clear();
     this->closeNetplayChatPrompt();
 #endif // NETPLAY
 
@@ -2752,7 +2799,32 @@ bool MainWindow::handleNetplayChatKeyPress(QKeyEvent *event)
             QString message = this->ui_NetplayChatInput.trimmed();
             if (!message.isEmpty())
             {
-                this->kailleraSessionManager->sendChatMessage(message);
+                const QString normalizedMessage = NormalizeOsdKailleraChatMessage(message);
+                this->kailleraSessionManager->sendChatMessage(normalizedMessage);
+
+                const QString localNickname = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::Kaillera_Username)).trimmed();
+                if (!localNickname.isEmpty())
+                {
+                    const auto now = std::chrono::steady_clock::now();
+                    while (!this->ui_PendingLocalChatEchoes.empty())
+                    {
+                        const auto age = now - this->ui_PendingLocalChatEchoes.front().time;
+                        if (age <= kLocalEchoMaxAge)
+                        {
+                            break;
+                        }
+                        this->ui_PendingLocalChatEchoes.pop_front();
+                    }
+
+                    this->ui_PendingLocalChatEchoes.push_back({normalizedMessage, std::chrono::steady_clock::now()});
+                    while (this->ui_PendingLocalChatEchoes.size() > kLocalEchoMaxEntries)
+                    {
+                        this->ui_PendingLocalChatEchoes.pop_front();
+                    }
+
+                    const std::string chatLine = "<" + localNickname.toStdString() + "> " + normalizedMessage.toStdString();
+                    OnScreenDisplaySetKailleraChatMessageImmediate(chatLine);
+                }
             }
             this->closeNetplayChatPrompt();
             return true;

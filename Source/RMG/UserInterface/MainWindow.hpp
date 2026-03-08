@@ -38,6 +38,8 @@
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QAction>
+#include <chrono>
+#include <deque>
 
 #include "ui_MainWindow.h"
 
@@ -136,6 +138,12 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     bool ui_AutoStartNetplayOnStartupPending = false;
     bool ui_NetplayChatInputActive = false;
     QString ui_NetplayChatInput;
+    struct PendingLocalChatEcho
+    {
+        QString message;
+        std::chrono::steady_clock::time_point time;
+    };
+    std::deque<PendingLocalChatEcho> ui_PendingLocalChatEchoes;
 #endif // NETPLAY
 
     bool ui_CheckRaphnetPluginMismatchPending = false;

@@ -32,6 +32,10 @@ void OnScreenDisplaySetMessage(std::string message);
 // (pass an empty string to clear queued chat messages)
 void OnScreenDisplaySetKailleraChatMessage(std::string message);
 
+// adds a Kaillera in-game chat message without slide-in animation
+// (pass an empty string to clear queued chat messages)
+void OnScreenDisplaySetKailleraChatMessageImmediate(std::string message);
+
 // sets the live input prompt message shown in the OSD message stack
 // (pass an empty string to hide the input prompt)
 void OnScreenDisplaySetInputPrompt(std::string message);
