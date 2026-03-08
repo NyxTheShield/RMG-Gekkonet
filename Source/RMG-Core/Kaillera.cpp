@@ -197,6 +197,7 @@ CORE_EXPORT bool CoreInitKaillera(void)
 
     // Load settings from RMG-K config into n02 globals
     int mode = CoreSettingsGetIntValue(SettingsID::Kaillera_ActiveMode);
+    if (mode < 0 || mode > 1) mode = 1; // Clamp to P2P(0) or Server(1)
     n02::activateMode(mode);
 
     kaillera_spoof_ping = CoreSettingsGetIntValue(SettingsID::Kaillera_SpoofPing);

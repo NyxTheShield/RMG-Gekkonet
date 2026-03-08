@@ -28,6 +28,8 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
+#include <QTabBar>
+#include <QResizeEvent>
 #include <QEventLoop>
 #include <QHeaderView>
 #include <QInputDialog>
@@ -49,11 +51,6 @@
 #include <future>
 
 #include <windows.h>
-
-static QString getKailleraRecordsDirectory()
-{
-    return QString::fromStdString(CoreGetKailleraRecordsDirectory());
-}
 
 KailleraNetplayDialog::KailleraNetplayDialog(QWidget* parent)
     : QDialog(parent)
@@ -135,7 +132,6 @@ void KailleraNetplayDialog::setupUI()
     m_tabWidget = new QTabWidget(this);
     m_tabWidget->addTab(createServerTab(), "Server");
     m_tabWidget->addTab(createP2PTab(), "P2P");
-    m_tabWidget->addTab(createPlaybackTab(), "Playback");
     connect(m_tabWidget, &QTabWidget::currentChanged, this, &KailleraNetplayDialog::onTabChanged);
     mainLayout->addWidget(m_tabWidget);
 
@@ -146,7 +142,7 @@ void KailleraNetplayDialog::setupUI()
         QMessageBox::about(this, "About RMG-K Netplay",
             "RMG-K Netplay\n\n"
             "Kaillera client based on n02 (Open Kaillera)\n"
-            "Supports Server, P2P, and Playback modes.\n\n"
+            "Supports Server and P2P modes.\n\n"
             "https://github.com/Jay-Day/RMG-K");
     });
     bottomLayout->addWidget(btnAbout);
@@ -155,6 +151,21 @@ void KailleraNetplayDialog::setupUI()
     connect(m_btnClose, &QPushButton::clicked, this, &QDialog::reject);
     bottomLayout->addWidget(m_btnClose);
     mainLayout->addLayout(bottomLayout);
+}
+
+void KailleraNetplayDialog::resizeEvent(QResizeEvent* event)
+{
+    QDialog::resizeEvent(event);
+    if (m_tabWidget)
+    {
+        int tabCount = m_tabWidget->count();
+        if (tabCount > 0)
+        {
+            int tabWidth = m_tabWidget->width() / tabCount;
+            m_tabWidget->tabBar()->setStyleSheet(
+                QString("QTabBar::tab { width: %1px; }").arg(tabWidth));
+        }
+    }
 }
 
 QWidget* KailleraNetplayDialog::createServerTab()
@@ -376,58 +387,6 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     return tab;
 }
 
-QWidget* KailleraNetplayDialog::createPlaybackTab()
-{
-    auto* tab = new QWidget();
-    auto* layout = new QVBoxLayout(tab);
-
-    // Recordings table
-    m_playbackTable = new QTableWidget(0, 6, tab);
-    m_playbackTable->setHorizontalHeaderLabels({"Date", "Players", "Game", "Duration", "Size", "Filename"});
-    m_playbackTable->horizontalHeader()->setStretchLastSection(true);
-    m_playbackTable->verticalHeader()->setVisible(false);
-    m_playbackTable->setShowGrid(false);
-    m_playbackTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_playbackTable->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_playbackTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_playbackTable->setSortingEnabled(true);
-    m_playbackTable->horizontalHeader()->setMinimumSectionSize(16);
-    m_playbackTable->setColumnWidth(0, 100);
-    m_playbackTable->setColumnWidth(1, 160);
-    m_playbackTable->setColumnWidth(2, 140);
-    m_playbackTable->setColumnWidth(3, 60);
-    m_playbackTable->setColumnWidth(4, 60);
-    connect(m_playbackTable, &QTableWidget::cellDoubleClicked, this, &KailleraNetplayDialog::onPlaybackDoubleClicked);
-    layout->addWidget(m_playbackTable);
-
-    // Buttons
-    auto* btnLayout = new QHBoxLayout();
-    m_btnPlay = new QPushButton("Play", tab);
-    m_btnStop = new QPushButton("Stop", tab);
-    m_btnPBDelete = new QPushButton("Delete", tab);
-    m_btnPBRefresh = new QPushButton("Refresh", tab);
-    m_btnOpenFolder = new QPushButton("Open Folder", tab);
-
-    connect(m_btnPlay, &QPushButton::clicked, this, &KailleraNetplayDialog::onPlaybackPlay);
-    connect(m_btnStop, &QPushButton::clicked, this, &KailleraNetplayDialog::onPlaybackStop);
-    connect(m_btnPBDelete, &QPushButton::clicked, this, &KailleraNetplayDialog::onPlaybackDelete);
-    connect(m_btnPBRefresh, &QPushButton::clicked, this, &KailleraNetplayDialog::onPlaybackRefresh);
-    connect(m_btnOpenFolder, &QPushButton::clicked, this, &KailleraNetplayDialog::onPlaybackOpenFolder);
-
-    btnLayout->addWidget(m_btnPlay);
-    btnLayout->addWidget(m_btnStop);
-    btnLayout->addWidget(m_btnPBDelete);
-    btnLayout->addWidget(m_btnPBRefresh);
-    btnLayout->addStretch();
-    btnLayout->addWidget(m_btnOpenFolder);
-    layout->addLayout(btnLayout);
-
-    // Populate on creation
-    populatePlaybackList();
-
-    return tab;
-}
-
 void KailleraNetplayDialog::loadSettings()
 {
     // Load username
@@ -455,17 +414,16 @@ void KailleraNetplayDialog::loadSettings()
 
     // Load active mode and select the corresponding tab
     int mode = CoreSettingsGetIntValue(SettingsID::Kaillera_ActiveMode);
-    if (mode < 0 || mode > 2) mode = 0;
-    // Tab order: 0=Server, 1=P2P, 2=Playback
-    // Mode order: 0=P2P, 1=Server, 2=Playback
-    int tabIndex = 0;
-    switch (mode)
-    {
-        case 0: tabIndex = 1; break; // P2P -> tab 1
-        case 1: tabIndex = 0; break; // Server -> tab 0
-        case 2: tabIndex = 2; break; // Playback -> tab 2
-    }
+    if (mode < 0 || mode > 1) mode = 1;
+    // Tab order: 0=Server, 1=P2P
+    // Mode order: 0=P2P, 1=Server
+    int tabIndex = (mode == 0) ? 1 : 0;
     m_tabWidget->setCurrentIndex(tabIndex);
+    // Always explicitly activate the mode. setCurrentIndex does not emit
+    // currentChanged when the index is unchanged (e.g., default 0 → 0),
+    // so onTabChanged never fires and the n02 module stays on whatever
+    // CoreInitKaillera loaded (which could be playback mode 2).
+    n02::activateMode(mode);
 }
 
 void KailleraNetplayDialog::saveSettings()
@@ -475,15 +433,9 @@ void KailleraNetplayDialog::saveSettings()
     CoreSettingsSetValue(SettingsID::Kaillera_SpoofPing,
                          m_frameDelayCombo->currentIndex());
 
-    // Tab order: 0=Server, 1=P2P, 2=Playback
-    // Mode order: 0=P2P, 1=Server, 2=Playback
-    int mode = 1;
-    switch (m_tabWidget->currentIndex())
-    {
-        case 0: mode = 1; break; // Server tab -> mode 1
-        case 1: mode = 0; break; // P2P tab -> mode 0
-        case 2: mode = 2; break; // Playback tab -> mode 2
-    }
+    // Tab order: 0=Server, 1=P2P
+    // Mode order: 0=P2P, 1=Server
+    int mode = (m_tabWidget->currentIndex() == 1) ? 0 : 1;
     CoreSettingsSetValue(SettingsID::Kaillera_ActiveMode, mode);
 }
 
@@ -621,17 +573,6 @@ void KailleraNetplayDialog::pingServerRow(int row)
 
 void KailleraNetplayDialog::onStateMachineTimer()
 {
-    // Detect playback ending naturally (recording ran out).
-    // player_EndGame() sets player_playing=false and KSSDFA.state=0 from the
-    // emulation thread. If we were tracking an active playback and it just
-    // went inactive, stop emulation.
-    if (m_playbackWasActive && !n02::isPlaybackActive())
-    {
-        m_playbackWasActive = false;
-        CoreMarkKailleraGameInactive();
-        CoreStopEmulation();
-    }
-
     // Drive the KSSDFA state machine one step (non-blocking)
     bool active = n02::processStateMachineStep();
     if (!active)
@@ -644,15 +585,9 @@ void KailleraNetplayDialog::onStateMachineTimer()
 
 void KailleraNetplayDialog::onTabChanged(int index)
 {
-    // Tab order: 0=Server, 1=P2P, 2=Playback
-    // n02 mode: 0=P2P, 1=Server, 2=Playback
-    int mode = 1;
-    switch (index)
-    {
-        case 0: mode = 1; break;
-        case 1: mode = 0; break;
-        case 2: mode = 2; break;
-    }
+    // Tab order: 0=Server, 1=P2P
+    // n02 mode: 0=P2P, 1=Server
+    int mode = (index == 1) ? 0 : 1;
     n02::activateMode(mode);
 }
 
@@ -1521,334 +1456,6 @@ void KailleraNetplayDialog::onP2PWaitingGames()
         m_p2pHostEdit->setText(host);
 
     onP2PJoin();
-}
-
-void KailleraNetplayDialog::populatePlaybackList()
-{
-    if (!m_playbackTable) return;
-
-    m_playbackTable->setSortingEnabled(false);
-    m_playbackTable->setRowCount(0);
-
-    const QString recordsPath = getKailleraRecordsDirectory();
-    QDir recordsDir(recordsPath);
-    if (!recordsDir.exists())
-    {
-        QDir().mkpath(recordsPath);
-        m_playbackTable->setSortingEnabled(true);
-        return;
-    }
-
-    QStringList filters;
-    filters << "*.krec";
-    QFileInfoList files = recordsDir.entryInfoList(filters, QDir::Files, QDir::Name | QDir::Reversed);
-
-    for (const QFileInfo& fi : files)
-    {
-        std::string fullPath = fi.absoluteFilePath().toStdString();
-        std::ifstream file(fullPath, std::ios::binary | std::ios::ate);
-        if (!file.is_open()) continue;
-
-        std::streamsize len = file.tellg();
-        if (len < 272)
-        {
-            file.close();
-            continue;
-        }
-
-        file.seekg(0, std::ios::beg);
-        char* filebuf = (char*)malloc((size_t)len + 1);
-        if (!filebuf) { file.close(); continue; }
-        file.read(filebuf, len);
-        file.close();
-
-        char VER[5];
-        memcpy(VER, filebuf, 4);
-        VER[4] = 0;
-        bool isKRC1 = (strcmp(VER, "KRC1") == 0);
-        if (strcmp(VER, "KRC0") != 0 && !isKRC1)
-        {
-            free(filebuf);
-            continue;
-        }
-
-        size_t headerSize = isKRC1 ? 400 : 272;
-        if ((size_t)len < headerSize)
-        {
-            free(filebuf);
-            continue;
-        }
-
-        // Parse game name (offset 132, 128 bytes)
-        char gameName[129];
-        memcpy(gameName, filebuf + 132, 128);
-        gameName[128] = 0;
-
-        // Parse timestamp, player number, numplayers (offset 260)
-        int32_t timestamp = 0;
-        memcpy(&timestamp, filebuf + 260, 4);
-        int32_t recPlayerNo = 0;
-        memcpy(&recPlayerNo, filebuf + 264, 4);
-        int32_t recNumPlayers = 0;
-        memcpy(&recNumPlayers, filebuf + 268, 4);
-
-        // Column 0: Date
-        QString dateStr;
-        {
-            bool parsed = false;
-            QByteArray fn = fi.fileName().toUtf8();
-            if (!isKRC1 && fn.size() > 13)
-            {
-                bool allDigits = true;
-                for (int d = 0; d < 12; d++)
-                {
-                    if (!isdigit((unsigned char)fn[d])) { allDigits = false; break; }
-                }
-                if (allDigits)
-                {
-                    // YYMMDDHHMMSS format
-                    dateStr = QString("%1/%2/%3 %4:%5")
-                        .arg(QString::fromUtf8(fn.mid(0, 2)))
-                        .arg(QString::fromUtf8(fn.mid(2, 2)))
-                        .arg(QString::fromUtf8(fn.mid(4, 2)))
-                        .arg(QString::fromUtf8(fn.mid(6, 2)))
-                        .arg(QString::fromUtf8(fn.mid(8, 2)));
-                    parsed = true;
-                }
-            }
-            if (!parsed)
-            {
-                time_t t = (time_t)timestamp;
-                tm* lt = localtime(&t);
-                if (lt)
-                {
-                    char buf[32];
-                    snprintf(buf, sizeof(buf), "%02d/%02d/%02d %02d:%02d",
-                             lt->tm_year % 100, lt->tm_mon + 1, lt->tm_mday,
-                             lt->tm_hour, lt->tm_min);
-                    dateStr = QString::fromUtf8(buf);
-                }
-                else
-                {
-                    dateStr = "?";
-                }
-            }
-        }
-
-        // Column 1: Players
-        QString playersStr;
-        {
-            if (isKRC1)
-            {
-                QStringList names;
-                for (int p = 0; p < recNumPlayers && p < 4; p++)
-                {
-                    char name[33];
-                    memcpy(name, filebuf + 272 + p * 32, 32);
-                    name[32] = 0;
-                    if (name[0] != 0)
-                        names.append(QString::fromUtf8(name));
-                }
-                playersStr = names.isEmpty() ? "?" : names.join(", ");
-            }
-            else
-            {
-                // KRC0: try to parse player names from filename
-                QByteArray fn = fi.fileName().toUtf8();
-                int nameStart = 0;
-                if (fn.size() > 13)
-                {
-                    bool allDigits = true;
-                    for (int d = 0; d < 12; d++)
-                    {
-                        if (!isdigit((unsigned char)fn[d])) { allDigits = false; break; }
-                    }
-                    if (allDigits && fn[12] == '-') nameStart = 13;
-                }
-                if (nameStart > 0)
-                {
-                    int extIdx = fn.indexOf(".krec");
-                    if (extIdx < 0) extIdx = fn.size();
-                    // Find last dash before extension — that separates players from game
-                    int lastDash = -1;
-                    for (int s = nameStart; s < extIdx; s++)
-                    {
-                        if (fn[s] == '-') lastDash = s;
-                    }
-                    if (lastDash > nameStart)
-                    {
-                        QByteArray playerPart = fn.mid(nameStart, lastDash - nameStart);
-                        playersStr = QString::fromUtf8(playerPart).replace('-', ", ");
-                    }
-                    else
-                    {
-                        playersStr = "?";
-                    }
-                }
-                else
-                {
-                    playersStr = "?";
-                }
-            }
-        }
-
-        // Column 3: Duration — count 0x12 records
-        int frames = 0;
-        {
-            char* scan = filebuf + headerSize;
-            char* scanEnd = filebuf + len;
-            while (scan + 1 < scanEnd)
-            {
-                unsigned char type = (unsigned char)*scan++;
-                if (type == 0x12)
-                {
-                    if (scan + 2 > scanEnd) break;
-                    unsigned short rlen = *(unsigned short*)scan;
-                    scan += 2;
-                    if (rlen > 0)
-                    {
-                        if (scan + rlen > scanEnd) break;
-                        scan += rlen;
-                    }
-                    frames++;
-                }
-                else if (type == 0x14)
-                {
-                    while (scan < scanEnd && *scan != 0) scan++;
-                    if (scan < scanEnd) scan++;
-                    scan += 4;
-                }
-                else if (type == 0x08)
-                {
-                    while (scan < scanEnd && *scan != 0) scan++;
-                    if (scan < scanEnd) scan++;
-                    while (scan < scanEnd && *scan != 0) scan++;
-                    if (scan < scanEnd) scan++;
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-        int totalSec = frames / 60;
-        int mins = totalSec / 60;
-        int secs = totalSec % 60;
-        QString durationStr = QString("%1:%2").arg(mins).arg(secs, 2, 10, QChar('0'));
-
-        // Column 4: Size
-        QString sizeStr;
-        {
-            qint64 sz = fi.size();
-            if (sz <= 1024)
-                sizeStr = QString::number(sz) + " B";
-            else if (sz < 1024 * 1000)
-                sizeStr = QString::number(sz / 1024) + " kB";
-            else
-                sizeStr = QString("%1.%2 MB").arg(sz / (1024 * 1000)).arg((sz % (1024 * 1000)) / (1024 * 100));
-        }
-
-        // Add row
-        int row = m_playbackTable->rowCount();
-        m_playbackTable->insertRow(row);
-        m_playbackTable->setItem(row, 0, new QTableWidgetItem(dateStr));
-        m_playbackTable->setItem(row, 1, new QTableWidgetItem(playersStr));
-        m_playbackTable->setItem(row, 2, new QTableWidgetItem(QString::fromUtf8(gameName)));
-        m_playbackTable->setItem(row, 3, new QTableWidgetItem(durationStr));
-        m_playbackTable->setItem(row, 4, new QTableWidgetItem(sizeStr));
-        m_playbackTable->setItem(row, 5, new QTableWidgetItem(fi.fileName()));
-
-        free(filebuf);
-    }
-
-    m_playbackTable->setSortingEnabled(true);
-
-    // Default sort: date descending (newest first)
-    m_playbackTable->sortByColumn(0, Qt::DescendingOrder);
-}
-
-void KailleraNetplayDialog::onPlaybackPlay()
-{
-    if (!m_playbackTable) return;
-    if (n02::isPlaybackActive()) return;
-
-    int row = m_playbackTable->currentRow();
-    if (row < 0) return;
-
-    QTableWidgetItem* fnItem = m_playbackTable->item(row, 5);
-    if (!fnItem) return;
-
-    QString filename = QDir(getKailleraRecordsDirectory()).filePath(fnItem->text());
-    QByteArray pathBytes = filename.toUtf8();
-
-    // Ensure playback mode is active
-    n02::activateMode(2);
-
-    if (n02::playbackLoad(pathBytes.constData()))
-    {
-        m_playbackWasActive = true;
-    }
-    else
-    {
-        QMessageBox::warning(this, "Playback", "Failed to load recording: " + fnItem->text());
-    }
-}
-
-void KailleraNetplayDialog::onPlaybackStop()
-{
-    if (n02::isPlaybackActive())
-    {
-        n02::endGame();
-    }
-    // n02::endGame() transitions the state machine but doesn't stop emulation.
-    // Directly stop the emulator so playback actually ends.
-    m_playbackWasActive = false;
-    CoreMarkKailleraGameInactive();
-    CoreStopEmulation();
-}
-
-void KailleraNetplayDialog::onPlaybackDelete()
-{
-    if (!m_playbackTable) return;
-
-    int row = m_playbackTable->currentRow();
-    if (row < 0) return;
-
-    QTableWidgetItem* fnItem = m_playbackTable->item(row, 5);
-    if (!fnItem) return;
-
-    QString filename = fnItem->text();
-    if (QMessageBox::question(this, "Delete Recording",
-            "Delete \"" + filename + "\"?",
-            QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes)
-    {
-        return;
-    }
-
-    QString fullPath = QDir(getKailleraRecordsDirectory()).filePath(filename);
-    QFile::remove(fullPath);
-    populatePlaybackList();
-}
-
-void KailleraNetplayDialog::onPlaybackRefresh()
-{
-    populatePlaybackList();
-}
-
-void KailleraNetplayDialog::onPlaybackOpenFolder()
-{
-    const QString recordsPath = getKailleraRecordsDirectory();
-    QDir().mkpath(recordsPath);
-    QDesktopServices::openUrl(QUrl::fromLocalFile(QDir(recordsPath).absolutePath()));
-}
-
-void KailleraNetplayDialog::onPlaybackDoubleClicked(int row, int column)
-{
-    (void)column;
-    if (row >= 0)
-    {
-        onPlaybackPlay();
-    }
 }
 
 #endif // _WIN32

@@ -66,19 +66,12 @@ private slots:
     // Tab changed
     void onTabChanged(int index);
 
-    // Playback tab
-    void onPlaybackPlay();
-    void onPlaybackStop();
-    void onPlaybackDelete();
-    void onPlaybackRefresh();
-    void onPlaybackOpenFolder();
-    void onPlaybackDoubleClicked(int row, int column);
-
 private:
     void setupUI();
     QWidget* createServerTab();
     QWidget* createP2PTab();
-    QWidget* createPlaybackTab();
+
+    void resizeEvent(QResizeEvent* event) override;
 
     void loadServerList();
     void saveServerList();
@@ -92,9 +85,6 @@ private:
     void loadP2PStoredUsers();
     void saveP2PStoredUsers();
     void refreshP2PStoredDisplay();
-
-    // Playback
-    void populatePlaybackList();
 
     // State machine timer (replaces blocking KSSDFA loop)
     QTimer* m_stateMachineTimer = nullptr;
@@ -141,15 +131,6 @@ private:
 
     // Frame delay (Server tab only)
     QComboBox* m_frameDelayCombo = nullptr;
-
-    // Playback tab
-    QTableWidget* m_playbackTable = nullptr;
-    QPushButton* m_btnPlay = nullptr;
-    QPushButton* m_btnStop = nullptr;
-    QPushButton* m_btnPBDelete = nullptr;
-    QPushButton* m_btnPBRefresh = nullptr;
-    QPushButton* m_btnOpenFolder = nullptr;
-    bool m_playbackWasActive = false;
 
     // Network manager for master list fetching
     QNetworkAccessManager* m_netManager = nullptr;

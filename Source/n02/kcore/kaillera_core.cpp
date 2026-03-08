@@ -142,8 +142,9 @@ bool kaillera_core_cleanup(){
 
 bool kaillera_disconnect(char * quitmsg){
 	n02_TRACE();
-	// Send leave message if connected and logged in
-	if (KAILLERAC.USERSTAT > 1 && KAILLERAC.connection) {
+	// Send leave message if we have sent USERLOGN (USERSTAT >= 1)
+	// USERSTAT 1 = login sent, 2 = logged in (LONGSUCC received)
+	if (KAILLERAC.USERSTAT >= 1 && KAILLERAC.connection) {
 		k_instruction ls;
 		ls.type = USERLEAV;
 		ls.store_short(-1);

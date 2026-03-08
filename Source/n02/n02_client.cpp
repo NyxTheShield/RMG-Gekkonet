@@ -189,13 +189,96 @@ static int gameCallbackWrapper(char *game, int player, int numplayers_arg) {
         // Create records directory
         std::filesystem::create_directories(recording_directory_path);
 
-        // Build filename: YYMMDDHHMMSS.krec
+        // Build filename: YYMMDDHHMMSS-Player1-Player2.krec
+        // Player names are truncated to fit within MAX_PATH (260) on Windows.
         time_t t = time(0);
         tm * lt = localtime(&t);
         char datePart[16];
         strftime(datePart, sizeof(datePart), "%y%m%d%H%M%S", lt);
 
-        std::filesystem::path recordingPath = recording_directory_path / (std::string(datePart) + ".krec");
+        std::string filename = datePart;
+
+        // Collect non-empty player names
+        std::vector<std::string> names;
+        for (int i = 0; i < numplayers_arg && i < 4; i++)
+        {
+            if (recording_player_names[i][0] != 0)
+            {
+                std::string name(recording_player_names[i]);
+                // Replace characters unsafe for filenames
+                for (char& c : name)
+                {
+                    if (c == '/' || c == '\\' || c == ':' || c == '*' ||
+                        c == '?' || c == '"' || c == '<' || c == '>' || c == '|')
+                        c = '_';
+                }
+                names.push_back(name);
+            }
+        }
+
+        if (!names.empty())
+        {
+            // Calculate path budget:
+            // MAX_PATH(260) - directory - separator(1) - timestamp(12) - ".krec"(5)
+            std::string dirStr = recording_directory_path.string();
+            int dirLen = (int)dirStr.size();
+            int budget = 260 - dirLen - 1 - 12 - 5;
+
+            // Budget for player names: subtract "-" separator before each name
+            int nameBudget = budget - (int)names.size();
+
+            if (nameBudget >= 3 * (int)names.size())
+            {
+                // Truncate each name to fit. Two passes: first pass uses equal
+                // share, second pass redistributes leftover from short names.
+                int numNames = (int)names.size();
+                std::vector<int> lengths(numNames);
+                int maxPerName = nameBudget / numNames;
+
+                // First pass: clamp each name, track leftover
+                int leftover = 0;
+                int needMore = 0;
+                for (int i = 0; i < numNames; i++)
+                {
+                    if ((int)names[i].size() <= maxPerName)
+                    {
+                        lengths[i] = (int)names[i].size();
+                        leftover += maxPerName - lengths[i];
+                    }
+                    else
+                    {
+                        lengths[i] = maxPerName;
+                        needMore++;
+                    }
+                }
+
+                // Second pass: distribute leftover to truncated names
+                if (leftover > 0 && needMore > 0)
+                {
+                    int extra = leftover / needMore;
+                    for (int i = 0; i < numNames; i++)
+                    {
+                        if (lengths[i] == maxPerName && (int)names[i].size() > maxPerName)
+                        {
+                            int newLen = maxPerName + extra;
+                            if (newLen > (int)names[i].size())
+                                newLen = (int)names[i].size();
+                            lengths[i] = newLen;
+                        }
+                    }
+                }
+
+                for (int i = 0; i < numNames; i++)
+                {
+                    filename += "-";
+                    filename += names[i].substr(0, lengths[i]);
+                }
+            }
+        }
+
+        filename += ".krec";
+
+        std::filesystem::path recordingPath = recording_directory_path / filename;
         recording_file.open(recordingPath, std::ios::binary | std::ios::trunc);
 
         if (!recording_file.is_open()) {
