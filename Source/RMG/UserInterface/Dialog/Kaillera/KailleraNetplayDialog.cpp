@@ -407,6 +407,64 @@ static void configureLauncherTallButtonMetrics(QPushButton* button)
     button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 }
 
+static void configureLauncherComboMetrics(QComboBox* combo)
+{
+    if (combo == nullptr)
+    {
+        return;
+    }
+
+    combo->setMinimumHeight(32);
+    combo->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+}
+
+static bool isFusionFamilyTheme(const QString& theme)
+{
+    return theme == "Fusion" || theme == "Fusion Warm" || theme == "Fusion Dark";
+}
+
+static void setPaletteRoleForAllGroups(QPalette& palette, QPalette::ColorRole role, const QColor& color)
+{
+    palette.setColor(QPalette::Active, role, color);
+    palette.setColor(QPalette::Inactive, role, color);
+    palette.setColor(QPalette::Disabled, role, color);
+}
+
+static void configureLauncherAccentPalette(QPushButton* button)
+{
+    if (button == nullptr)
+    {
+        return;
+    }
+
+    const QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    if (!isFusionFamilyTheme(theme))
+    {
+        return;
+    }
+
+    const QPalette appPalette = QApplication::palette();
+    const QColor accent = appPalette.color(QPalette::Highlight);
+    const QColor accentText = appPalette.color(QPalette::HighlightedText);
+    const QColor disabledText = appPalette.color(QPalette::Disabled, QPalette::ButtonText);
+
+    QPalette palette = button->palette();
+    setPaletteRoleForAllGroups(palette, QPalette::Button, accent);
+    setPaletteRoleForAllGroups(palette, QPalette::Window, accent);
+    setPaletteRoleForAllGroups(palette, QPalette::Base, accent);
+    setPaletteRoleForAllGroups(palette, QPalette::Light, accent.lighter(130));
+    setPaletteRoleForAllGroups(palette, QPalette::Midlight, accent.lighter(115));
+    setPaletteRoleForAllGroups(palette, QPalette::Mid, accent.darker(115));
+    setPaletteRoleForAllGroups(palette, QPalette::Dark, accent.darker(140));
+    setPaletteRoleForAllGroups(palette, QPalette::Shadow, accent.darker(180));
+    setPaletteRoleForAllGroups(palette, QPalette::ButtonText, accentText);
+    setPaletteRoleForAllGroups(palette, QPalette::WindowText, accentText);
+    setPaletteRoleForAllGroups(palette, QPalette::BrightText, accentText);
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, disabledText);
+    palette.setColor(QPalette::Disabled, QPalette::WindowText, disabledText);
+    button->setPalette(palette);
+}
+
 class LauncherTabBar final : public QTabBar
 {
 public:
@@ -523,44 +581,15 @@ static QString buildLauncherStyleSheet(const QString& theme)
         "  background-color: palette(base);"
         "  font-weight: %5;"
         "}"
-        "QLineEdit#KailleraInput, QComboBox#KailleraInputCombo {"
+        "QLineEdit#KailleraInput {"
         "  border: 1px solid palette(mid);"
         "  border-radius: %6;"
         "  background-color: palette(base);"
         "  padding: 5px 8px;"
         "  min-height: 24px;"
         "}"
-        "QLineEdit#KailleraInput:focus, QComboBox#KailleraInputCombo:focus {"
+        "QLineEdit#KailleraInput:focus {"
         "  border-color: palette(highlight);"
-        "}"
-        "QComboBox#KailleraInputCombo::drop-down {"
-        "  subcontrol-origin: padding;"
-        "  subcontrol-position: top right;"
-        "  width: %7;"
-        "  border: none;"
-        "  border-left: 1px solid palette(mid);"
-        "  border-top-right-radius: %8;"
-        "  border-bottom-right-radius: %8;"
-        "  background-color: %9;"
-        "  margin: 1px;"
-        "}"
-        "QComboBox#KailleraInputCombo::down-arrow {"
-        "  image: url(%10);"
-        "  width: 10px;"
-        "  height: 10px;"
-        "}"
-        "QComboBox#KailleraInputCombo QAbstractItemView {"
-        "  border: 1px solid palette(mid);"
-        "  background-color: palette(base);"
-        "  selection-background-color: palette(highlight);"
-        "  selection-color: palette(highlighted-text);"
-        "  outline: none;"
-        "  padding: 0px;"
-        "  margin: 0px;"
-        "}"
-        "QComboBox#KailleraInputCombo QAbstractItemView::item {"
-        "  padding: 4px 8px;"
-        "  margin: 0px;"
         "}"
         "QFrame#KailleraSearchPopup {"
         "  border: 1px solid palette(mid);"
@@ -612,6 +641,45 @@ static QString buildLauncherStyleSheet(const QString& theme)
     if (modern)
     {
         style += QString(
+            "QComboBox#KailleraInputCombo {"
+            "  border: 1px solid palette(mid);"
+            "  border-radius: %1;"
+            "  background-color: palette(base);"
+            "  padding: 5px 8px;"
+            "  min-height: 24px;"
+            "}"
+            "QComboBox#KailleraInputCombo:focus {"
+            "  border-color: palette(highlight);"
+            "}"
+            "QComboBox#KailleraInputCombo::drop-down {"
+            "  subcontrol-origin: padding;"
+            "  subcontrol-position: top right;"
+            "  width: %2;"
+            "  border: none;"
+            "  border-left: 1px solid palette(mid);"
+            "  border-top-right-radius: %1;"
+            "  border-bottom-right-radius: %1;"
+            "  background-color: transparent;"
+            "  margin: 1px;"
+            "}"
+            "QComboBox#KailleraInputCombo::down-arrow {"
+            "  image: url(%3);"
+            "  width: 10px;"
+            "  height: 10px;"
+            "}"
+            "QComboBox#KailleraInputCombo QAbstractItemView {"
+            "  border: 1px solid palette(mid);"
+            "  background-color: palette(base);"
+            "  selection-background-color: palette(highlight);"
+            "  selection-color: palette(highlighted-text);"
+            "  outline: none;"
+            "  padding: 0px;"
+            "  margin: 0px;"
+            "}"
+            "QComboBox#KailleraInputCombo QAbstractItemView::item {"
+            "  padding: 4px 8px;"
+            "  margin: 0px;"
+            "}"
             "QPushButton#KailleraPrimaryButton {"
             "  border: 1px solid #0066b4;"
             "  border-radius: %1;"
@@ -651,7 +719,7 @@ static QString buildLauncherStyleSheet(const QString& theme)
             "QPushButton#KailleraFabButton:pressed {"
             "  border-color: #004f8b;"
             "  background-color: #005a9e;"
-            "}").arg(controlRadius, fabRadius);
+            "}").arg(controlRadius, comboDropWidth, comboArrowIcon, fabRadius);
     }
 
     return style;
@@ -822,6 +890,7 @@ QWidget* KailleraNetplayDialog::createServerTab()
     m_btnAdd->setIconSize(QSize(22, 22));
     m_btnAdd->setCursor(Qt::PointingHandCursor);
     m_btnAdd->setFixedSize(46, 46);
+    configureLauncherAccentPalette(m_btnAdd);
     connect(m_btnAdd, &QPushButton::clicked, this, &KailleraNetplayDialog::onAddServer);
     attachFloatingCornerButton(tablePane, m_btnAdd, 20, 14);
 
@@ -838,10 +907,12 @@ QWidget* KailleraNetplayDialog::createServerTab()
     m_btnConnect = new QPushButton("Connect", tab);
     m_btnConnect->setObjectName("KailleraPrimaryButton");
     configureLauncherButtonMetrics(m_btnConnect);
+    configureLauncherAccentPalette(m_btnConnect);
     auto* frameDelayLabel = new QLabel("Frame Delay:", tab);
     frameDelayLabel->setObjectName("KailleraFieldLabel");
     m_frameDelayCombo = new QComboBox(tab);
     m_frameDelayCombo->setObjectName("KailleraInputCombo");
+    configureLauncherComboMetrics(m_frameDelayCombo);
     m_frameDelayCombo->addItem("Auto");
     m_frameDelayCombo->addItem("1 frame (8ms)");
     m_frameDelayCombo->addItem("2 frames (24ms)");
@@ -895,6 +966,7 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     gameLayout->addWidget(gameLabel);
     m_p2pGameCombo = new SearchableComboBox(hostBody);
     m_p2pGameCombo->setObjectName("KailleraInputCombo");
+    configureLauncherComboMetrics(m_p2pGameCombo);
     m_p2pGameCombo->setToolTip("Choose the ROM to host");
     gameLayout->addWidget(m_p2pGameCombo, 1);
     hostBodyLayout->addLayout(gameLayout);
@@ -933,6 +1005,7 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     m_btnP2PHost = new QPushButton("Host", hostBody);
     m_btnP2PHost->setObjectName("KailleraPrimaryButton");
     configureLauncherButtonMetrics(m_btnP2PHost);
+    configureLauncherAccentPalette(m_btnP2PHost);
     connect(m_btnP2PHost, &QPushButton::clicked, this, &KailleraNetplayDialog::onP2PHost);
     hostBtnLayout->addWidget(m_btnP2PHost);
     hostBodyLayout->addLayout(hostBtnLayout);
@@ -970,6 +1043,7 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     m_btnP2PJoin = new QPushButton("Connect", connectBody);
     m_btnP2PJoin->setObjectName("KailleraPrimaryButton");
     configureLauncherButtonMetrics(m_btnP2PJoin);
+    configureLauncherAccentPalette(m_btnP2PJoin);
     connect(m_btnP2PJoin, &QPushButton::clicked, this, &KailleraNetplayDialog::onP2PJoin);
     addrLayout->addWidget(m_btnP2PJoin);
     m_btnP2PPasteGo = new QPushButton("Paste && Go", connectBody);
