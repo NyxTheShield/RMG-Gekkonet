@@ -9,7 +9,7 @@
  */
 #include "KailleraServerBrowserDialog.hpp"
 
-#ifdef _WIN32
+#ifdef NETPLAY
 
 #include "../../KailleraUIBridge.hpp"
 #include "KailleraOptionsDialog.hpp"
@@ -39,7 +39,9 @@
 #include <QMouseEvent>
 #include <QProxyStyle>
 #include <QStyle>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 namespace
 {
@@ -2209,12 +2211,17 @@ void KailleraServerBrowserDialog::onPlayerJoined(QString name, int ping, unsigne
     // Beep on player join
     if (CoreSettingsGetBoolValue(SettingsID::Kaillera_BeepOnJoin))
     {
+#ifdef _WIN32
         MessageBeep(MB_OK);
+#else
+        QApplication::beep();
+#endif
     }
 
     // Flash taskbar if dialog not focused
     if (CoreSettingsGetBoolValue(SettingsID::Kaillera_FlashOnJoin) && !isActiveWindow())
     {
+#ifdef _WIN32
         FLASHWINFO fwi = {};
         fwi.cbSize = sizeof(fwi);
         fwi.hwnd = reinterpret_cast<HWND>(winId());
@@ -2222,6 +2229,9 @@ void KailleraServerBrowserDialog::onPlayerJoined(QString name, int ping, unsigne
         fwi.uCount = 0;
         fwi.dwTimeout = 0;
         FlashWindowEx(&fwi);
+#else
+        QApplication::alert(this);
+#endif
     }
 }
 
@@ -2705,4 +2715,4 @@ void KailleraServerBrowserDialog::onStatsTimer()
 
 }
 
-#endif // _WIN32
+#endif // NETPLAY

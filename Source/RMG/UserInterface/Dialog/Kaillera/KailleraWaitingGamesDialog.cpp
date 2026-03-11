@@ -9,7 +9,7 @@
  */
 #include "KailleraWaitingGamesDialog.hpp"
 
-#ifdef _WIN32
+#ifdef NETPLAY
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -213,4 +213,4 @@ void KailleraWaitingGamesDialog::onRowDoubleClicked(int row, int column)
     onConnect();
 }
 
-#endif // _WIN32
+#endif // NETPLAY

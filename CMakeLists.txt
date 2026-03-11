@@ -117,7 +117,7 @@ endif()
 
 add_subdirectory(Source/3rdParty)
 add_subdirectory(Source/3rdParty/lzma)
-if (NETPLAY AND WIN32)
+if (NETPLAY)
     add_subdirectory(Source/n02)
 endif()
 add_subdirectory(Source/RMG-Core)

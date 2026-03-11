@@ -10,7 +10,7 @@
 #ifndef KAILLERANETPLAYDIALOG_HPP
 #define KAILLERANETPLAYDIALOG_HPP
 
-#ifdef _WIN32
+#ifdef NETPLAY
 
 #include <QDialog>
 #include <QTimer>
@@ -158,5 +158,5 @@ private:
     QPushButton* m_btnClose = nullptr;
 };
 
-#endif // _WIN32
+#endif // NETPLAY
 #endif // KAILLERANETPLAYDIALOG_HPP

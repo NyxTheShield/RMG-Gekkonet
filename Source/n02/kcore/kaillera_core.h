@@ -1,5 +1,12 @@
 #pragma once
 
+// __cdecl is a Windows calling convention, define it as empty on other platforms
+#ifndef _WIN32
+#ifndef __cdecl
+#define __cdecl
+#endif
+#endif
+
 // Preprocessor stringification macros
 #define N02_STRINGIFY(x) #x
 #define N02_TOSTRING(x) N02_STRINGIFY(x)

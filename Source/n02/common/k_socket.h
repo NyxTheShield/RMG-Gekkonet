@@ -14,7 +14,7 @@
 /*************************************************
  Dependencies ************************************
 *************************************************/
-#if defined(linux)
+#if defined(linux) || defined(__linux__) || !defined(_WIN32)
 
 #include <sys/select.h>
 #include <unistd.h>
@@ -24,10 +24,15 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <cstring>
 
 #define SOCKET int
 #define INVALID_SOCKET -1
+#define SOCKET_ERROR -1
 #define TIMEVAL timeval
+#define DWORD unsigned long
+#define closesocket(s) ::close(s)
+#define ioctlsocket ioctl
 
 #else
 

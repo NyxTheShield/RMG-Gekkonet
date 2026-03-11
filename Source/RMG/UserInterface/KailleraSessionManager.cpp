@@ -9,7 +9,7 @@
  */
 #include "KailleraSessionManager.hpp"
 #include "KailleraUIBridge.hpp"
-#ifdef _WIN32
+#ifdef NETPLAY
 #include "Dialog/Kaillera/KailleraNetplayDialog.hpp"
 #endif
 
@@ -26,7 +26,7 @@ KailleraSessionManager::KailleraSessionManager(QWidget* parent)
     , m_totalPlayers(0)
     , m_parentWidget(parent)
 {
-#ifdef _WIN32
+#ifdef NETPLAY
     // Register n02 UI callbacks (detailed server browser / P2P UI events)
     KailleraUIBridge::instance().registerCallbacks();
 #endif
@@ -74,7 +74,7 @@ KailleraSessionManager::~KailleraSessionManager()
         endGame();
     }
 
-#ifdef _WIN32
+#ifdef NETPLAY
     // Unregister n02 UI callbacks
     KailleraUIBridge::instance().unregisterCallbacks();
 #endif
@@ -82,7 +82,7 @@ KailleraSessionManager::~KailleraSessionManager()
 
 bool KailleraSessionManager::showServerDialog()
 {
-#ifdef _WIN32
+#ifdef NETPLAY
     // Show the netplay dialog non-modally so the main window stays interactive.
     // Use a QEventLoop to block this function until the dialog closes.
     KailleraNetplayDialog dialog(m_parentWidget);

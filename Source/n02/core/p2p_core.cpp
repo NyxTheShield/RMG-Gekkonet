@@ -9,9 +9,13 @@
 #include <windows.h>
 #else
 #include <unistd.h>
+#include <chrono>
 #define Sleep(ms) usleep((ms) * 1000)
 #define DWORD unsigned long
-#define GetTickCount() 0
+static inline unsigned long GetTickCount() {
+    using namespace std::chrono;
+    return (unsigned long)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+}
 #endif
 
 extern int p2p_frame_delay_override;

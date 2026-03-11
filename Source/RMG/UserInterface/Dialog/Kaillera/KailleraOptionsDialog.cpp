@@ -9,7 +9,7 @@
  */
 #include "KailleraOptionsDialog.hpp"
 
-#ifdef _WIN32
+#ifdef NETPLAY
 
 #include <RMG-Core/Settings.hpp>
 
@@ -122,4 +122,4 @@ void KailleraOptionsDialog::saveSettings()
     CoreSettingsSave();
 }
 
-#endif // _WIN32
+#endif // NETPLAY

@@ -9,7 +9,7 @@
  */
 #include "KailleraP2PDialog.hpp"
 
-#ifdef _WIN32
+#ifdef NETPLAY
 
 #include "../../KailleraUIBridge.hpp"
 
@@ -27,6 +27,14 @@
 #include <QIcon>
 
 #include <cstring>
+
+#ifndef _WIN32
+#include <chrono>
+static inline unsigned long GetTickCount() {
+    using namespace std::chrono;
+    return (unsigned long)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+}
+#endif
 
 static const char* kN02TraversalHost = "nat.smash64.net";
 static const int kN02TraversalPort = 6264;
@@ -1021,4 +1029,4 @@ void KailleraP2PDialog::onTravTimer()
     }
 }
 
-#endif // _WIN32
+#endif // NETPLAY

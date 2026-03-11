@@ -4,6 +4,13 @@
  */
 #pragma once
 
+// __cdecl is a Windows calling convention, define it as empty on other platforms
+#ifndef _WIN32
+#ifndef __cdecl
+#define __cdecl
+#endif
+#endif
+
 #include "common/k_framecache.h"
 
 extern int PACKETLOSSCOUNT;

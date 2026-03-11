@@ -22,10 +22,8 @@
 #include "Dialog/Netplay/NetplaySessionBrowserDialog.hpp"
 #include "Dialog/Netplay/CreateNetplaySessionDialog.hpp"
 #include "Dialog/Netplay/NetplaySessionDialog.hpp"
-#endif // NETPLAY
-#ifdef _WIN32
 #include "KailleraUIBridge.hpp"
-#endif
+#endif // NETPLAY
 #include "UserInterface/EventFilter.hpp"
 #include "Utilities/QtKeyToSdl3Key.hpp"
 #include "Utilities/QtMessageBox.hpp"
@@ -2589,12 +2587,10 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
             this, &MainWindow::on_Kaillera_GameStarted);
     connect(this->kailleraSessionManager, &KailleraSessionManager::chatReceived,
             this, &MainWindow::on_Kaillera_ChatReceived);
-#ifdef _WIN32
     connect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
             this, &MainWindow::on_Kaillera_ChatReceived);
     connect(&KailleraUIBridge::instance(), &KailleraUIBridge::recordingFileClosed,
             this, &MainWindow::on_Kaillera_RecordingFileClosed);
-#endif
     connect(this->kailleraSessionManager, &KailleraSessionManager::playerDropped,
             this, &MainWindow::on_Kaillera_PlayerDropped);
     connect(this->kailleraSessionManager, &KailleraSessionManager::gameEnded,
@@ -2616,12 +2612,10 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
     // Guard: closeEvent may have already cleaned up if the main window was closed
     if (this->kailleraSessionManager != nullptr)
     {
-#ifdef _WIN32
         disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
                    this, &MainWindow::on_Kaillera_ChatReceived);
         disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::recordingFileClosed,
                    this, &MainWindow::on_Kaillera_RecordingFileClosed);
-#endif
         delete this->kailleraSessionManager;
         this->kailleraSessionManager = nullptr;
         CoreShutdownKaillera();
@@ -2684,7 +2678,6 @@ void MainWindow::on_Kaillera_GameStarted(QString gameName, int playerNum, int to
 
 void MainWindow::on_Kaillera_ChatReceived(QString nickname, QString message)
 {
-#ifdef _WIN32
     // Only show in-game Kaillera chat (not lobby chat).
     if (!CoreHasInitKaillera() || !this->emulationThread->isRunning())
     {
@@ -2726,10 +2719,6 @@ void MainWindow::on_Kaillera_ChatReceived(QString nickname, QString message)
         const std::string chatLine = "<" + nickname.toStdString() + "> " + message.toStdString();
         OnScreenDisplaySetKailleraChatMessage(chatLine);
     }
-#else
-    (void)nickname;
-    (void)message;
-#endif
 }
 
 void MainWindow::on_Kaillera_PlayerDropped(QString nickname, int playerNum)

@@ -12,7 +12,7 @@
 #include "KailleraP2PDialog.hpp"
 #include "KailleraWaitingGamesDialog.hpp"
 
-#ifdef _WIN32
+#ifdef NETPLAY
 
 #include "../../KailleraUIBridge.hpp"
 
@@ -48,7 +48,9 @@
 #include <fstream>
 #include <future>
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 static QString getKailleraRecordsDirectory()
 {
@@ -434,7 +436,8 @@ void KailleraNetplayDialog::loadSettings()
     std::string username = CoreSettingsGetStringValue(SettingsID::Kaillera_Username);
     if (username.empty())
     {
-        // Fallback to Windows username
+        // Fallback to OS username
+#ifdef _WIN32
         char winUser[32];
         DWORD size = sizeof(winUser);
         if (GetUserNameA(winUser, &size))
@@ -442,6 +445,14 @@ void KailleraNetplayDialog::loadSettings()
             username = winUser;
         }
         else
+#else
+        const char* envUser = getenv("USER");
+        if (envUser && envUser[0] != '\0')
+        {
+            username = envUser;
+        }
+        else
+#endif
         {
             username = "Player";
         }
@@ -762,10 +773,14 @@ void KailleraNetplayDialog::onServerRightClicked(QPoint pos)
         QString host = m_servers[idx].host;
         QString ip = host.split(':').first();
 
-        // Launch tracert in a new console window
+        // Launch traceroute in a terminal window
+#ifdef _WIN32
         QString cmd = "cmd.exe /c \"tracert " + ip + " & pause\"";
         QByteArray cmdBytes = cmd.toLocal8Bit();
         WinExec(cmdBytes.constData(), SW_SHOW);
+#else
+        QProcess::startDetached("traceroute", QStringList() << ip);
+#endif
     }
 }
 
@@ -1851,4 +1866,4 @@ void KailleraNetplayDialog::onPlaybackDoubleClicked(int row, int column)
     }
 }
 
-#endif // _WIN32
+#endif // NETPLAY

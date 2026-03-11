@@ -9,7 +9,7 @@
  */
 #include "KailleraUIBridge.hpp"
 
-#ifdef _WIN32
+#ifdef NETPLAY
 
 #include "n02_client.h"
 #include "common/k_socket.h"  // for sockaddr_in
@@ -223,4 +223,4 @@ void KailleraUIBridge::unregisterCallbacks()
     n02::setUICallbacks(empty);
 }
 
-#endif // _WIN32
+#endif // NETPLAY
