@@ -58,7 +58,7 @@ static QString getKailleraRecordsDirectory()
 }
 
 KailleraNetplayDialog::KailleraNetplayDialog(QWidget* parent)
-    : QDialog(parent)
+    : QDialog(parent, Qt::Window)
 {
     setWindowIcon(QIcon(":Resource/Kaillera.svg"));
     m_netManager = new QNetworkAccessManager(this);

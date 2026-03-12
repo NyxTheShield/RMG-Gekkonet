@@ -83,9 +83,11 @@ KailleraSessionManager::~KailleraSessionManager()
 bool KailleraSessionManager::showServerDialog()
 {
 #ifdef NETPLAY
-    // Show the netplay dialog non-modally so the main window stays interactive.
-    // Use a QEventLoop to block this function until the dialog closes.
-    KailleraNetplayDialog dialog(m_parentWidget);
+    // Pass nullptr as parent so the dialog is a truly independent top-level
+    // window. On Linux, child dialogs always stay above their parent in the
+    // window manager stacking order, preventing the emulator from being
+    // brought to the front or fullscreened.
+    KailleraNetplayDialog dialog(nullptr);
     dialog.setWindowModality(Qt::NonModal);
     dialog.show();
 

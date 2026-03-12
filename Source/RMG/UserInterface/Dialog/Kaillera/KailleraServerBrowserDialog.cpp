@@ -183,7 +183,7 @@ public:
 };
 
 KailleraServerBrowserDialog::KailleraServerBrowserDialog(const QString& serverName, QWidget* parent)
-    : QDialog(parent)
+    : QDialog(parent, Qt::Window)
     , m_serverName(serverName)
 {
     setWindowIcon(QIcon(":Resource/Kaillera.svg"));
