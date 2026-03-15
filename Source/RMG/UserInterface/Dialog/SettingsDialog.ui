@@ -566,6 +566,9 @@
                    <property name="suffix">
                     <string> px</string>
                    </property>
+                   <property name="maximum">
+                    <number>9999</number>
+                   </property>
                   </widget>
                  </item>
                 </layout>
@@ -586,6 +589,9 @@
                    </property>
                    <property name="suffix">
                     <string> px</string>
+                   </property>
+                   <property name="maximum">
+                    <number>9999</number>
                    </property>
                   </widget>
                  </item>
