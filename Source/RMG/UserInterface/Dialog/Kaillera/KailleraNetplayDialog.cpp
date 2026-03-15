@@ -51,6 +51,7 @@
 #include <QMouseEvent>
 #include <QScrollBar>
 #include <QSignalBlocker>
+#include <QStylePainter>
 #include <QStyledItemDelegate>
 #include <QStringList>
 
@@ -120,6 +121,12 @@ public:
         : QComboBox(parent)
     {
         setSizeAdjustPolicy(QComboBox::AdjustToContentsOnFirstShow);
+    }
+
+    void setDisplayTextInset(int inset)
+    {
+        m_displayTextInset = inset;
+        update();
     }
 
     void showPopup() override
@@ -228,6 +235,28 @@ protected:
         QComboBox::mouseReleaseEvent(event);
     }
 
+    void paintEvent(QPaintEvent* event) override
+    {
+        if (m_displayTextInset <= 0)
+        {
+            QComboBox::paintEvent(event);
+            return;
+        }
+
+        Q_UNUSED(event);
+
+        QStylePainter painter(this);
+        QStyleOptionComboBox option;
+        initStyleOption(&option);
+        painter.drawComplexControl(QStyle::CC_ComboBox, option);
+
+        QStyleOptionComboBox labelOption(option);
+        labelOption.rect = style()->subControlRect(
+            QStyle::CC_ComboBox, &option, QStyle::SC_ComboBoxEditField, this);
+        labelOption.rect.adjust(m_displayTextInset, 0, 0, 0);
+        painter.drawControl(QStyle::CE_ComboBoxLabel, labelOption);
+    }
+
 private:
     void refreshPopupItems(const QString& filter)
     {
@@ -288,6 +317,7 @@ private:
     QLineEdit* m_searchEdit = nullptr;
     QListWidget* m_listWidget = nullptr;
     bool m_suppressPopupUntilMouseRelease = false;
+    int m_displayTextInset = 0;
 };
 
 class CenteredIconDelegate final : public QStyledItemDelegate
@@ -423,6 +453,19 @@ static bool isFusionFamilyTheme(const QString& theme)
     return theme == "Fusion" || theme == "Fusion Warm" || theme == "Fusion Dark";
 }
 
+static void configureLauncherLineEditMetrics(QLineEdit* edit, const QString& theme)
+{
+    if (edit == nullptr)
+    {
+        return;
+    }
+
+    if (isFusionFamilyTheme(theme))
+    {
+        edit->setFixedHeight(32);
+    }
+}
+
 static QWidget* createLauncherSectionPane(
     const QString& theme, QWidget* parent, const QString& title, QVBoxLayout** outLayout)
 {
@@ -444,7 +487,7 @@ static QWidget* createLauncherSectionPane(
         auto* widget = new QWidget(parent);
         layout = new QVBoxLayout(widget);
         layout->setContentsMargins(0, 0, 0, 0);
-        layout->setSpacing(6);
+        layout->setSpacing(10);
         auto* titleLabel = new QLabel(title, widget);
         titleLabel->setObjectName("KailleraSectionCaption");
         layout->addWidget(titleLabel, 0, Qt::AlignLeft);
@@ -463,6 +506,20 @@ static void setPaletteRoleForAllGroups(QPalette& palette, QPalette::ColorRole ro
     palette.setColor(QPalette::Active, role, color);
     palette.setColor(QPalette::Inactive, role, color);
     palette.setColor(QPalette::Disabled, role, color);
+}
+
+static QColor blendColors(const QColor& from, const QColor& to, qreal amount)
+{
+    const qreal clamped = std::clamp(amount, 0.0, 1.0);
+    return QColor(
+        static_cast<int>(from.red() + ((to.red() - from.red()) * clamped)),
+        static_cast<int>(from.green() + ((to.green() - from.green()) * clamped)),
+        static_cast<int>(from.blue() + ((to.blue() - from.blue()) * clamped)));
+}
+
+static QString cssColor(const QColor& color)
+{
+    return color.name(QColor::HexRgb);
 }
 
 static void configureLauncherAccentPalette(QPushButton* button)
@@ -494,9 +551,12 @@ static void configureLauncherAccentPalette(QPushButton* button)
     setPaletteRoleForAllGroups(palette, QPalette::Shadow, accent.darker(180));
     setPaletteRoleForAllGroups(palette, QPalette::ButtonText, accentText);
     setPaletteRoleForAllGroups(palette, QPalette::WindowText, accentText);
+    setPaletteRoleForAllGroups(palette, QPalette::Text, accentText);
     setPaletteRoleForAllGroups(palette, QPalette::BrightText, accentText);
     palette.setColor(QPalette::Disabled, QPalette::ButtonText, disabledText);
     palette.setColor(QPalette::Disabled, QPalette::WindowText, disabledText);
+    palette.setColor(QPalette::Disabled, QPalette::Text, disabledText);
+    button->setForegroundRole(QPalette::ButtonText);
     button->setPalette(palette);
 }
 
@@ -570,14 +630,21 @@ static QString buildLauncherStyleSheet(const QString& theme)
     const QString tabRadius = modern ? "8px" : "0px";
     const QString controlRadius = modern ? "7px" : "2px";
     const QString fabRadius = modern ? "23px" : "6px";
-    const QString dividerColor = modern ? "palette(mid)" : "palette(dark)";
+    const QString dividerColor = modern ? "palette(mid)" : "palette(midlight)";
     const QString tabMargin = modern ? "0px" : "2px";
     const QString tabWeight = modern ? "600" : "500";
-    const QString tabBarLeftOffset = modern ? "8px" : "0px";
+    const QString tabBarLeftOffset = modern ? "8px" : "12px";
     const QString comboDropWidth = modern ? "24px" : "32px";
     const QString comboDropRadius = modern ? controlRadius : "0px";
     const QString comboDropBackground = modern ? "transparent" : "palette(button)";
-    const bool darkTheme = QApplication::palette().window().color().value() < 128;
+    const QString lineEditVerticalPadding = modern ? "5px" : "1px";
+    const QPalette appPalette = QApplication::palette();
+    const QColor windowColor = appPalette.window().color();
+    const bool darkTheme = windowColor.value() < 128;
+    const QColor inactiveTabColor = darkTheme
+        ? blendColors(windowColor, QColor(Qt::white), modern ? 0.18 : 0.15)
+        : blendColors(windowColor, QColor(Qt::white), modern ? 0.48 : 0.38);
+    const QString inactiveTabBackground = cssColor(inactiveTabColor);
     const QString comboArrowIcon = QString(":/icons/%1/svg/arrow-down-s-line.svg")
         .arg(darkTheme ? "white" : "black");
 
@@ -612,9 +679,7 @@ static QString buildLauncherStyleSheet(const QString& theme)
         "  left: %2;"
         "}"
         "QTabWidget#KailleraLauncherTabs QTabBar::tab {"
-        "  background-color: palette(window);"
         "  border: 1px solid palette(mid);"
-        "  border-bottom: none;"
         "  border-top-left-radius: %3;"
         "  border-top-right-radius: %3;"
         "  padding: 7px 14px;"
@@ -622,14 +687,14 @@ static QString buildLauncherStyleSheet(const QString& theme)
         "}"
         "QTabWidget#KailleraLauncherTabs QTabBar::tab:selected {"
         "  background-color: palette(base);"
+        "  border-bottom: none;"
         "  font-weight: %5;"
         "}"
         "QLineEdit#KailleraInput {"
         "  border: 1px solid palette(mid);"
         "  border-radius: %6;"
         "  background-color: palette(base);"
-        "  padding: 5px 8px;"
-        "  min-height: 24px;"
+        "  padding: %13 8px;"
         "}"
         "QLineEdit#KailleraInput:focus {"
         "  border-color: palette(highlight);"
@@ -653,17 +718,6 @@ static QString buildLauncherStyleSheet(const QString& theme)
         "  background: transparent;"
         "  color: palette(text);"
         "}"
-        "QHeaderView::section {"
-        "  background-color: palette(window);"
-        "  border: none;"
-        "  border-bottom: 1px solid palette(mid);"
-        "  border-left: 1px solid palette(mid);"
-        "  padding: 6px 8px;"
-        "  font-weight: 600;"
-        "}"
-        "QHeaderView::section:first {"
-        "  border-left: none;"
-        "}"
         "QFrame#KailleraDivider {"
         "  background-color: %12;"
         "  max-height: 1px;"
@@ -679,11 +733,40 @@ static QString buildLauncherStyleSheet(const QString& theme)
             comboDropBackground,
             comboArrowIcon,
             fabRadius,
-            dividerColor);
+            dividerColor,
+            lineEditVerticalPadding);
+
+    style += QString(
+        "QTabWidget#KailleraLauncherTabs QTabBar::tab:!selected {"
+        "  background-color: %1;"
+        "}").arg(inactiveTabBackground);
+
+    style += QString(
+        "QTableWidget#KailleraSurface[launcherServerTable=\"true\"] {"
+        "  border-top: 1px solid palette(mid);"
+        "  border-left: 1px solid palette(mid);"
+        "}"
+        "QTableWidget#KailleraSurface[launcherP2PTable=\"true\"] {"
+        "  border: 1px solid palette(mid);"
+        "}");
 
     if (modern)
     {
         style += QString(
+            "QWidget#KailleraPaneGameList {"
+            "  border-radius: 0px;"
+            "}"
+            "QHeaderView::section {"
+            "  background-color: palette(window);"
+            "  border: none;"
+            "  border-bottom: 1px solid palette(mid);"
+            "  border-left: 1px solid palette(mid);"
+            "  padding: 6px 8px;"
+            "  font-weight: 600;"
+            "}"
+            "QHeaderView::section:first {"
+            "  border-left: none;"
+            "}"
             "QGroupBox#KailleraPane {"
             "  margin-top: 10px;"
             "  padding-top: 6px;"
@@ -730,7 +813,8 @@ static QString buildLauncherStyleSheet(const QString& theme)
             "  margin: 0px;"
             "}"
             "QComboBox#KailleraInputCombo QAbstractItemView::item {"
-            "  padding: 4px 8px;"
+            "  padding: 0px 8px;"
+            "  min-height: 18px;"
             "  margin: 0px;"
             "}"
             "QPushButton#KailleraPrimaryButton {"
@@ -859,6 +943,7 @@ void KailleraNetplayDialog::setupUI()
     m_usernameEdit = new QLineEdit(profilePane);
     m_usernameEdit->setObjectName("KailleraInput");
     m_usernameEdit->setMaxLength(31);
+    configureLauncherLineEditMetrics(m_usernameEdit, theme);
     settingsLayout->addWidget(m_usernameEdit);
     profileWrapperLayout->addWidget(profilePane);
     mainLayout->addWidget(profileWrapper);
@@ -878,6 +963,7 @@ QWidget* KailleraNetplayDialog::createServerTab()
     auto* layout = new QVBoxLayout(tab);
     layout->setContentsMargins(12, 12, 12, 12);
     layout->setSpacing(10);
+    const QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
 
     // Server list table
     auto* tablePane = new QWidget(tab);
@@ -888,6 +974,7 @@ QWidget* KailleraNetplayDialog::createServerTab()
 
     m_serverTable = new QTableWidget(0, 5, tablePane);
     m_serverTable->setObjectName("KailleraSurface");
+    m_serverTable->setProperty("launcherServerTable", true);
     m_serverTable->setHorizontalHeaderLabels({"*", "Name", "Players", "Ping", "IP"});
     m_serverTable->verticalHeader()->setVisible(false);
     m_serverTable->setShowGrid(false);
@@ -903,12 +990,20 @@ QWidget* KailleraNetplayDialog::createServerTab()
     m_serverTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Interactive);
     m_serverTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Interactive);
     m_serverTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+    QFont serverHeaderFont = m_serverTable->horizontalHeader()->font();
+    serverHeaderFont.setBold(false);
+    m_serverTable->horizontalHeader()->setFont(serverHeaderFont);
     m_serverTable->setColumnWidth(0, 28);
     m_serverTable->setColumnWidth(1, 170);
     m_serverTable->setColumnWidth(2, 58);
     m_serverTable->setColumnWidth(3, 60);
     m_serverTable->setContextMenuPolicy(Qt::CustomContextMenu);
     m_serverTable->setItemDelegateForColumn(0, new CenteredIconDelegate(m_serverTable));
+    if (theme != "Modern" && !isFusionFamilyTheme(theme))
+    {
+        m_serverTable->setStyleSheet(
+            "QTableWidget { border-top: 1px solid palette(mid); border-left: 1px solid palette(mid); }");
+    }
     connect(m_serverTable, &QTableWidget::cellDoubleClicked, this, &KailleraNetplayDialog::onServerDoubleClicked);
     connect(m_serverTable, &QWidget::customContextMenuRequested, this, &KailleraNetplayDialog::onServerRightClicked);
     connect(m_serverTable, &QTableWidget::cellClicked, this, [this](int row, int column) {
@@ -927,7 +1022,6 @@ QWidget* KailleraNetplayDialog::createServerTab()
     m_btnAdd = new QPushButton(tablePane);
     m_btnAdd->setObjectName("KailleraFabButton");
     m_btnAdd->setToolTip("Add a custom server");
-    const QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
     const bool useLauncherSkin =
         (theme == "Modern" || theme == "Fusion" || theme == "Fusion Warm" || theme == "Fusion Dark");
     if (useLauncherSkin)
@@ -1023,6 +1117,10 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     m_p2pGameCombo = new SearchableComboBox(hostBody);
     m_p2pGameCombo->setObjectName("KailleraInputCombo");
     configureLauncherComboMetrics(m_p2pGameCombo);
+    if (theme != "Modern")
+    {
+        static_cast<SearchableComboBox*>(m_p2pGameCombo)->setDisplayTextInset(4);
+    }
     m_p2pGameCombo->setToolTip("Choose the ROM to host");
     gameLayout->addWidget(m_p2pGameCombo, 1);
     hostBodyLayout->addLayout(gameLayout);
@@ -1055,6 +1153,7 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     m_p2pPortEdit = new QLineEdit(hostBody);
     m_p2pPortEdit->setObjectName("KailleraInput");
     m_p2pPortEdit->setText("27886");
+    configureLauncherLineEditMetrics(m_p2pPortEdit, theme);
     m_p2pPortEdit->setMaximumWidth(80);
     hostBtnLayout->addWidget(m_p2pPortEdit);
     hostBtnLayout->addStretch();
@@ -1071,11 +1170,17 @@ QWidget* KailleraNetplayDialog::createP2PTab()
 
     if (theme != "Modern")
     {
-        auto* divider = new QFrame(tab);
+        auto* dividerRow = new QWidget(tab);
+        auto* dividerRowLayout = new QVBoxLayout(dividerRow);
+        dividerRowLayout->setContentsMargins(0, 6, 0, 6);
+        dividerRowLayout->setSpacing(0);
+
+        auto* divider = new QFrame(dividerRow);
         divider->setObjectName("KailleraDivider");
         divider->setFrameShape(QFrame::HLine);
         divider->setFrameShadow(QFrame::Plain);
-        layout->addWidget(divider);
+        dividerRowLayout->addWidget(divider);
+        layout->addWidget(dividerRow);
     }
 
     // Connect area
@@ -1100,6 +1205,7 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     m_p2pHostEdit = new QLineEdit(connectBody);
     m_p2pHostEdit->setObjectName("KailleraInput");
     m_p2pHostEdit->setPlaceholderText("Connect code or ip:port");
+    configureLauncherLineEditMetrics(m_p2pHostEdit, theme);
     addrLayout->addWidget(m_p2pHostEdit, 1);
     m_btnP2PJoin = new QPushButton("Connect", connectBody);
     m_btnP2PJoin->setObjectName("KailleraPrimaryButton");
@@ -1120,6 +1226,7 @@ QWidget* KailleraNetplayDialog::createP2PTab()
 
     m_p2pStoredTable = new QTableWidget(0, 3, connectBody);
     m_p2pStoredTable->setObjectName("KailleraSurface");
+    m_p2pStoredTable->setProperty("launcherP2PTable", true);
     m_p2pStoredTable->setHorizontalHeaderLabels({"*", "Name", "IP / Code"});
     m_p2pStoredTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
     m_p2pStoredTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
@@ -1132,6 +1239,11 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     m_p2pStoredTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_p2pStoredTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_p2pStoredTable->setItemDelegateForColumn(0, new CenteredIconDelegate(m_p2pStoredTable));
+    if (theme != "Modern" && !isFusionFamilyTheme(theme))
+    {
+        m_p2pStoredTable->setStyleSheet(
+            "QTableWidget { border: 1px solid palette(mid); }");
+    }
     connect(m_p2pStoredTable, &QTableWidget::cellClicked, this, &KailleraNetplayDialog::onP2PStoredClicked);
     storedAreaLayout->addWidget(m_p2pStoredTable, 1);
 

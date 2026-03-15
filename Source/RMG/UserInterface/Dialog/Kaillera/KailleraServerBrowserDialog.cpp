@@ -26,9 +26,11 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
+#include <QSplitterHandle>
 #include <QHeaderView>
 #include <QMessageBox>
 #include <QScrollBar>
+#include <QTimer>
 #include <QTime>
 #include <QRegularExpression>
 #include <QApplication>
@@ -37,8 +39,6 @@
 #include <QIcon>
 #include <QListWidgetItem>
 #include <QMouseEvent>
-#include <QProxyStyle>
-#include <QStyle>
 #include <windows.h>
 
 namespace
@@ -71,6 +71,104 @@ QColor blendColors(const QColor& fg, const QColor& bg, int fgWeight)
         (fg.blue() * clampedWeight + bg.blue() * bgWeight) / 100);
 }
 
+bool isFusionFamilyTheme(const QString& theme)
+{
+    return theme == "Fusion" || theme == "Fusion Warm" || theme == "Fusion Dark";
+}
+
+void setPaletteRoleForAllGroups(QPalette& palette, QPalette::ColorRole role, const QColor& color)
+{
+    palette.setColor(QPalette::Active, role, color);
+    palette.setColor(QPalette::Inactive, role, color);
+    palette.setColor(QPalette::Disabled, role, color);
+}
+
+void configureServerAccentPalette(QPushButton* button, bool enabled = true)
+{
+    if (button == nullptr)
+    {
+        return;
+    }
+
+    const QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    if (!isFusionFamilyTheme(theme))
+    {
+        return;
+    }
+
+    const QPalette appPalette = QApplication::palette();
+    const QColor accent = appPalette.color(QPalette::Highlight);
+    const QColor accentText = appPalette.color(QPalette::HighlightedText);
+    const QColor disabledText = appPalette.color(QPalette::Disabled, QPalette::ButtonText);
+
+    QPalette palette = button->palette();
+    setPaletteRoleForAllGroups(palette, QPalette::Button, accent);
+    setPaletteRoleForAllGroups(palette, QPalette::Window, accent);
+    setPaletteRoleForAllGroups(palette, QPalette::Base, accent);
+    setPaletteRoleForAllGroups(palette, QPalette::Light, accent.lighter(130));
+    setPaletteRoleForAllGroups(palette, QPalette::Midlight, accent.lighter(115));
+    setPaletteRoleForAllGroups(palette, QPalette::Mid, accent.darker(115));
+    setPaletteRoleForAllGroups(palette, QPalette::Dark, accent.darker(140));
+    setPaletteRoleForAllGroups(palette, QPalette::Shadow, accent.darker(180));
+    setPaletteRoleForAllGroups(palette, QPalette::ButtonText, accentText);
+    setPaletteRoleForAllGroups(palette, QPalette::WindowText, accentText);
+    setPaletteRoleForAllGroups(palette, QPalette::Text, accentText);
+    setPaletteRoleForAllGroups(palette, QPalette::BrightText, accentText);
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, disabledText);
+    palette.setColor(QPalette::Disabled, QPalette::WindowText, disabledText);
+    palette.setColor(QPalette::Disabled, QPalette::Text, disabledText);
+    button->setForegroundRole(QPalette::ButtonText);
+    button->setPalette(palette);
+    button->setEnabled(enabled);
+}
+
+void configureServerFabMetrics(QPushButton* button)
+{
+    if (button == nullptr)
+    {
+        return;
+    }
+    button->setFixedSize(46, 46);
+}
+
+void configureServerButtonMetrics(QPushButton* button)
+{
+    if (button == nullptr)
+    {
+        return;
+    }
+    button->setMinimumHeight(24);
+}
+
+void configureServerTinyButtonMetrics(QPushButton* button)
+{
+    if (button == nullptr)
+    {
+        return;
+    }
+    button->setMinimumHeight(20);
+    button->setMaximumHeight(20);
+    button->setMinimumWidth(102);
+}
+
+void configureServerHeaderActionMetrics(QPushButton* button)
+{
+    if (button == nullptr)
+    {
+        return;
+    }
+    button->setMinimumHeight(22);
+}
+
+void configureServerStartButtonMetrics(QPushButton* button)
+{
+    if (button == nullptr)
+    {
+        return;
+    }
+    button->setMinimumHeight(34);
+}
+
 QColor playerPortColor(int portIndex)
 {
     switch (portIndex)
@@ -88,21 +186,41 @@ constexpr int PlayerNameRole = Qt::UserRole + 1;
 constexpr int PlayerPingRole = Qt::UserRole + 2;
 constexpr int PlayerDelayRole = Qt::UserRole + 3;
 
-class ThinSplitterStyle final : public QProxyStyle
+class ThinSplitterHandle final : public QSplitterHandle
 {
 public:
-    explicit ThinSplitterStyle()
-        : QProxyStyle(nullptr)
+    ThinSplitterHandle(Qt::Orientation orientation, QSplitter* parent)
+        : QSplitterHandle(orientation, parent)
     {
     }
 
-    int pixelMetric(PixelMetric metric, const QStyleOption* option, const QWidget* widget) const override
+    QSize sizeHint() const override
     {
-        if (metric == QStyle::PM_SplitterWidth)
+        QSize hint = QSplitterHandle::sizeHint();
+        if (orientation() == Qt::Horizontal)
         {
-            return 1;
+            hint.setWidth(1);
         }
-        return QProxyStyle::pixelMetric(metric, option, widget);
+        else
+        {
+            hint.setHeight(1);
+        }
+        return hint;
+    }
+};
+
+class ThinSplitter final : public QSplitter
+{
+public:
+    ThinSplitter(Qt::Orientation orientation, QWidget* parent = nullptr)
+        : QSplitter(orientation, parent)
+    {
+    }
+
+protected:
+    QSplitterHandle* createHandle() override
+    {
+        return new ThinSplitterHandle(orientation(), this);
     }
 };
 
@@ -434,24 +552,34 @@ void KailleraServerBrowserDialog::setupUI()
     setMinimumSize(700, 500);
     resize(800, 600);
 
+    const QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    const bool modern = (theme == "Modern");
+    const QString paneRadius = modern ? "10px" : "2px";
+    const QString splitOuterRadius = modern ? "10px" : "2px";
+    const QString playerCardRadius = modern ? "8px" : "2px";
+    const QString kickButtonRadius = modern ? "6px" : "2px";
+    const QString tableShellRadius = modern ? "9px" : "2px";
+    const QString composerRadius = modern ? "7px" : "2px";
+    const QString sidebarRadius = modern ? "10px" : "2px";
+    const QString headerIconRadius = modern ? "5px" : "2px";
+
     // Style the joined-server UI surfaces and keep list/table selection visually neutral.
-    setStyleSheet(
-        "QTableWidget::item { padding-left: 6px; }"
+    QString style = QString(
         "QWidget#KailleraPane {"
         "  border: 1px solid palette(mid);"
-        "  border-radius: 10px;"
+        "  border-radius: %1;"
         "  background-color: palette(base);"
         "}"
         "QWidget#KailleraPaneGameList {"
         "  border: 1px solid palette(mid);"
-        "  border-radius: 10px;"
+        "  border-radius: %1;"
         "  background-color: palette(base);"
         "}"
         "QWidget#KailleraPaneLeftJoined {"
         "  border: 1px solid palette(mid);"
         "  border-right: none;"
-        "  border-top-left-radius: 10px;"
-        "  border-bottom-left-radius: 10px;"
+        "  border-top-left-radius: %2;"
+        "  border-bottom-left-radius: %2;"
         "  border-top-right-radius: 0px;"
         "  border-bottom-right-radius: 0px;"
         "  background-color: palette(base);"
@@ -461,8 +589,8 @@ void KailleraServerBrowserDialog::setupUI()
         "  border-left: none;"
         "  border-top-left-radius: 0px;"
         "  border-bottom-left-radius: 0px;"
-        "  border-top-right-radius: 10px;"
-        "  border-bottom-right-radius: 10px;"
+        "  border-top-right-radius: %2;"
+        "  border-bottom-right-radius: %2;"
         "  background-color: palette(base);"
         "}"
         "QWidget#KailleraPaneHeader {"
@@ -518,11 +646,11 @@ void KailleraServerBrowserDialog::setupUI()
         "}"
         "QWidget#KailleraPlayerCard {"
         "  border: none;"
-        "  border-radius: 8px;"
+        "  border-radius: %3;"
         "}"
         "QPushButton#KailleraPlayerKickButton {"
         "  border: 1px solid transparent;"
-        "  border-radius: 6px;"
+        "  border-radius: %4;"
         "  min-width: 20px;"
         "  max-width: 20px;"
         "  min-height: 20px;"
@@ -547,33 +675,13 @@ void KailleraServerBrowserDialog::setupUI()
         "QLabel#KailleraPlayerStats {"
         "  color: palette(mid);"
         "}"
-        "QHeaderView::section {"
-        "  background-color: palette(window);"
-        "  border: none;"
-        "  border-bottom: 1px solid palette(mid);"
-        "  border-left: 1px solid palette(mid);"
-        "  padding: 6px 8px;"
-        "  font-weight: 600;"
-        "}"
-        "QHeaderView::section:first {"
-        "  border-left: none;"
-        "}"
-        "QTableWidget#KailleraSurface[roomLobbySnapshot=\"true\"] QHeaderView::section:first {"
-        "  border-left: 1px solid palette(mid);"
-        "}"
-        "QTableWidget#KailleraSurface[mainGameList=\"true\"] {"
-        "  border-top-left-radius: 9px;"
-        "  border-top-right-radius: 9px;"
-        "}"
-        "QTableWidget#KailleraSurface[mainGameList=\"true\"] QHeaderView::section:first {"
-        "  border-top-left-radius: 9px;"
-        "}"
-        "QTableWidget#KailleraSurface[mainGameList=\"true\"] QHeaderView::section:last {"
-        "  border-top-right-radius: 9px;"
+        "QTableWidget#KailleraSurface[tableShell=\"true\"] {"
+        "  border-top-left-radius: %5;"
+        "  border-top-right-radius: %5;"
         "}"
         "QWidget#KailleraChatComposer {"
         "  border: 1px solid palette(mid);"
-        "  border-radius: 7px;"
+        "  border-radius: %6;"
         "  background-color: palette(base);"
         "}"
         "QLineEdit#KailleraChatComposerInput {"
@@ -608,82 +716,12 @@ void KailleraServerBrowserDialog::setupUI()
         "}"
         "QWidget#KailleraSidebar {"
         "  border: 1px solid palette(mid);"
-        "  border-radius: 10px;"
+        "  border-radius: %7;"
         "  background-color: palette(base);"
-        "}"
-        "QPushButton#KailleraPrimaryButton {"
-        "  border: 1px solid #0066b4;"
-        "  border-radius: 7px;"
-        "  min-height: 24px;"
-        "  padding: 4px 12px;"
-        "  font-weight: 700;"
-        "  color: white;"
-        "  background-color: #0078D7;"
-        "}"
-        "QPushButton#KailleraPrimaryButton:hover {"
-        "  background-color: #1c88dc;"
-        "}"
-        "QPushButton#KailleraPrimaryButton:pressed {"
-        "  border-color: #004f8b;"
-        "  background-color: #005a9e;"
-        "  padding-top: 5px;"
-        "  padding-bottom: 3px;"
-        "}"
-        "QPushButton#KailleraFabButton {"
-        "  border: 1px solid #005a9e;"
-        "  border-radius: 23px;"
-        "  min-width: 46px;"
-        "  max-width: 46px;"
-        "  min-height: 46px;"
-        "  max-height: 46px;"
-        "  padding: 0px;"
-        "  background-color: #0078D7;"
-        "}"
-        "QPushButton#KailleraFabButton:hover {"
-        "  background-color: #1c88dc;"
-        "}"
-        "QPushButton#KailleraFabButton:pressed {"
-        "  border-color: #004f8b;"
-        "  background-color: #005a9e;"
-        "}"
-        "QPushButton#KailleraSecondaryButton {"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 7px;"
-        "  min-height: 24px;"
-        "  padding: 4px 10px;"
-        "  background-color: palette(window);"
-        "}"
-        "QPushButton#KailleraSecondaryButton:hover {"
-        "  background-color: palette(light);"
-        "}"
-        "QPushButton#KailleraSecondaryButton:pressed {"
-        "  border-color: palette(shadow);"
-        "  background-color: palette(mid);"
-        "  padding-top: 5px;"
-        "  padding-bottom: 3px;"
-        "}"
-        "QPushButton#KailleraTinyButton {"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 7px;"
-        "  min-height: 20px;"
-        "  max-height: 20px;"
-        "  min-width: 102px;"
-        "  max-width: 102px;"
-        "  padding: 0px 6px;"
-        "  background-color: palette(window);"
-        "  font-weight: 600;"
-        "}"
-        "QPushButton#KailleraTinyButton:hover {"
-        "  background-color: palette(light);"
-        "}"
-        "QPushButton#KailleraTinyButton:pressed {"
-        "  border-color: palette(shadow);"
-        "  background-color: palette(mid);"
-        "  padding-top: 1px;"
         "}"
         "QPushButton#KailleraHeaderIconButton {"
         "  border: 1px solid transparent;"
-        "  border-radius: 5px;"
+        "  border-radius: %8;"
         "  min-width: 20px;"
         "  max-width: 20px;"
         "  min-height: 20px;"
@@ -700,50 +738,144 @@ void KailleraServerBrowserDialog::setupUI()
         "  background-color: palette(mid);"
         "  padding-top: 1px;"
         "}"
-        "QPushButton#KailleraHeaderActionButton {"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 7px;"
-        "  min-height: 22px;"
-        "  padding: 0px 8px;"
-        "  background-color: palette(window);"
-        "  font-weight: 600;"
-        "}"
-        "QPushButton#KailleraHeaderActionButton:hover {"
-        "  background-color: palette(light);"
-        "}"
-        "QPushButton#KailleraHeaderActionButton:pressed {"
-        "  border-color: palette(shadow);"
-        "  background-color: palette(mid);"
-        "  padding-top: 1px;"
-        "}"
-        "QPushButton#KailleraStartButton {"
-        "  border: 1px solid #005a9e;"
-        "  border-radius: 7px;"
-        "  min-height: 34px;"
-        "  padding: 6px 14px;"
-        "  color: white;"
-        "  background-color: #0078D7;"
-        "  font-size: 15px;"
-        "  font-weight: 700;"
-        "}"
-        "QPushButton#KailleraStartButton:hover {"
-        "  background-color: #1c88dc;"
-        "}"
-        "QPushButton#KailleraStartButton:pressed {"
-        "  border-color: #004f8b;"
-        "  background-color: #005a9e;"
-        "  padding-top: 7px;"
-        "  padding-bottom: 5px;"
-        "}"
-        "QPushButton#KailleraStartButton:disabled {"
-        "  border: 1px solid palette(mid);"
-        "  color: palette(mid);"
-        "  background-color: palette(window);"
-        "}"
         "QLabel#KailleraStatValue {"
         "  font-weight: 600;"
-        "}"
-    );
+        "}").arg(
+            paneRadius,
+            splitOuterRadius,
+            playerCardRadius,
+            kickButtonRadius,
+            tableShellRadius,
+            composerRadius,
+            sidebarRadius,
+            headerIconRadius);
+
+    if (modern)
+    {
+        style +=
+            "QHeaderView::section {"
+            "  background-color: palette(window);"
+            "  border: none;"
+            "  border-bottom: 1px solid palette(mid);"
+            "  border-left: 1px solid palette(mid);"
+            "  padding: 6px 8px;"
+            "  font-weight: 600;"
+            "}"
+            "QHeaderView::section:first {"
+            "  border-left: none;"
+            "}"
+            "QTableWidget#KailleraSurface[roomLobbySnapshot=\"true\"] QHeaderView::section:first {"
+            "  border-left: 1px solid palette(mid);"
+            "}"
+            "QTableWidget#KailleraSurface[mainGameList=\"true\"] QHeaderView::section:first {"
+            "  border-top-left-radius: 9px;"
+            "}"
+            "QTableWidget#KailleraSurface[mainGameList=\"true\"] QHeaderView::section:last {"
+            "  border-top-right-radius: 9px;"
+            "}"
+            "QPushButton#KailleraPrimaryButton {"
+            "  border: 1px solid #0066b4;"
+            "  border-radius: 7px;"
+            "  padding: 4px 12px;"
+            "  font-weight: 700;"
+            "  color: white;"
+            "  background-color: #0078D7;"
+            "}"
+            "QPushButton#KailleraPrimaryButton:hover {"
+            "  background-color: #1c88dc;"
+            "}"
+            "QPushButton#KailleraPrimaryButton:pressed {"
+            "  border-color: #004f8b;"
+            "  background-color: #005a9e;"
+            "  padding-top: 5px;"
+            "  padding-bottom: 3px;"
+            "}"
+            "QPushButton#KailleraFabButton {"
+            "  border: 1px solid #005a9e;"
+            "  border-radius: 23px;"
+            "  padding: 0px;"
+            "  background-color: #0078D7;"
+            "}"
+            "QPushButton#KailleraFabButton:hover {"
+            "  background-color: #1c88dc;"
+            "}"
+            "QPushButton#KailleraFabButton:pressed {"
+            "  border-color: #004f8b;"
+            "  background-color: #005a9e;"
+            "}"
+            "QPushButton#KailleraSecondaryButton {"
+            "  border: 1px solid palette(mid);"
+            "  border-radius: 7px;"
+            "  padding: 4px 10px;"
+            "  background-color: palette(window);"
+            "}"
+            "QPushButton#KailleraSecondaryButton:hover {"
+            "  background-color: palette(light);"
+            "}"
+            "QPushButton#KailleraSecondaryButton:pressed {"
+            "  border-color: palette(shadow);"
+            "  background-color: palette(mid);"
+            "  padding-top: 5px;"
+            "  padding-bottom: 3px;"
+            "}"
+            "QPushButton#KailleraTinyButton {"
+            "  border: 1px solid palette(mid);"
+            "  border-radius: 7px;"
+            "  max-height: 20px;"
+            "  max-width: 102px;"
+            "  padding: 0px 6px;"
+            "  background-color: palette(window);"
+            "  font-weight: 600;"
+            "}"
+            "QPushButton#KailleraTinyButton:hover {"
+            "  background-color: palette(light);"
+            "}"
+            "QPushButton#KailleraTinyButton:pressed {"
+            "  border-color: palette(shadow);"
+            "  background-color: palette(mid);"
+            "  padding-top: 1px;"
+            "}"
+            "QPushButton#KailleraHeaderActionButton {"
+            "  border: 1px solid palette(mid);"
+            "  border-radius: 7px;"
+            "  padding: 0px 8px;"
+            "  background-color: palette(window);"
+            "  font-weight: 600;"
+            "}"
+            "QPushButton#KailleraHeaderActionButton:hover {"
+            "  background-color: palette(light);"
+            "}"
+            "QPushButton#KailleraHeaderActionButton:pressed {"
+            "  border-color: palette(shadow);"
+            "  background-color: palette(mid);"
+            "  padding-top: 1px;"
+            "}"
+            "QPushButton#KailleraStartButton {"
+            "  border: 1px solid #005a9e;"
+            "  border-radius: 7px;"
+            "  padding: 6px 14px;"
+            "  color: white;"
+            "  background-color: #0078D7;"
+            "  font-size: 15px;"
+            "  font-weight: 700;"
+            "}"
+            "QPushButton#KailleraStartButton:hover {"
+            "  background-color: #1c88dc;"
+            "}"
+            "QPushButton#KailleraStartButton:pressed {"
+            "  border-color: #004f8b;"
+            "  background-color: #005a9e;"
+            "  padding-top: 7px;"
+            "  padding-bottom: 5px;"
+            "}"
+            "QPushButton#KailleraStartButton:disabled {"
+            "  border: 1px solid palette(mid);"
+            "  color: palette(mid);"
+            "  background-color: palette(window);"
+            "}";
+    }
+
+    setStyleSheet(style);
 
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(10, 10, 10, 10);
@@ -752,12 +884,9 @@ void KailleraServerBrowserDialog::setupUI()
     // === TOP SECTION (always visible) ===
 
     // Lobby chat (left) + User table (right)
-    m_topSplitter = new QSplitter(Qt::Horizontal, this);
+    m_topSplitter = new ThinSplitter(Qt::Horizontal, this);
     m_topSplitter->setObjectName("KailleraJoinedSplitter");
     m_topSplitter->setHandleWidth(1);
-    auto* topSplitterStyle = new ThinSplitterStyle();
-    m_topSplitter->setStyle(topSplitterStyle);
-
     auto* lobbyPane = new QWidget(this);
     lobbyPane->setObjectName("KailleraPaneLeftJoined");
     auto* lobbyPaneLayout = new QVBoxLayout(lobbyPane);
@@ -780,6 +909,7 @@ void KailleraServerBrowserDialog::setupUI()
     leaveServerButton->setObjectName("KailleraHeaderActionButton");
     leaveServerButton->setIcon(themedLineIcon("door-open-line"));
     leaveServerButton->setIconSize(QSize(14, 14));
+    configureServerHeaderActionMetrics(leaveServerButton);
     leaveServerButton->setToolTip("Disconnect from the server and return to the server list");
     leaveServerButton->setAutoDefault(false);
     leaveServerButton->setDefault(false);
@@ -839,7 +969,14 @@ void KailleraServerBrowserDialog::setupUI()
 
     auto* usersHeader = new QWidget(usersPane);
     usersHeader->setObjectName("KailleraPaneHeader");
-    usersHeader->setMinimumHeight(31);
+    if (!modern)
+    {
+        usersHeader->setFixedHeight(32);
+    }
+    else
+    {
+        usersHeader->setMinimumHeight(31);
+    }
     auto* usersHeaderLayout = new QHBoxLayout(usersHeader);
     usersHeaderLayout->setContentsMargins(10, 4, 10, 4);
     usersHeaderLayout->setSpacing(6);
@@ -853,16 +990,31 @@ void KailleraServerBrowserDialog::setupUI()
     m_connectedPlayersCountLabel = new QLabel("(0)", usersHeader);
     m_connectedPlayersCountLabel->setObjectName("KailleraPaneMeta");
     usersHeaderLayout->addWidget(m_connectedPlayersCountLabel);
+    if (!modern)
+    {
+        QTimer::singleShot(0, this, [lobbyHeader, usersHeader]() {
+            if (lobbyHeader != nullptr && usersHeader != nullptr)
+            {
+                usersHeader->setFixedHeight(lobbyHeader->height());
+            }
+        });
+    }
 
     auto* usersBody = new QWidget(usersPane);
     auto* usersBodyLayout = new QVBoxLayout(usersBody);
+    // Keep the right/bottom inset but let the header sit flush against the title row and left border.
     usersBodyLayout->setContentsMargins(0, 0, 1, 1);
     usersBodyLayout->setSpacing(0);
 
     m_userTable = new QTableWidget(0, 4, usersBody);
     m_userTable->setObjectName("KailleraSurface");
+    m_userTable->setProperty("tableShell", true);
     m_userTable->setHorizontalHeaderLabels({"Name", "Ping", "UID", "Status"});
-    m_userTable->horizontalHeader()->setStretchLastSection(true);
+    m_userTable->horizontalHeader()->setStretchLastSection(false);
+    m_userTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
+    m_userTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+    m_userTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Interactive);
+    m_userTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
     m_userTable->verticalHeader()->setVisible(false);
     m_userTable->setShowGrid(false);
     m_userTable->setAlternatingRowColors(true);
@@ -871,6 +1023,9 @@ void KailleraServerBrowserDialog::setupUI()
     m_userTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_userTable->setSortingEnabled(true);
     m_userTable->horizontalHeader()->setMinimumSectionSize(16);
+    m_userTable->setColumnWidth(0, 130);
+    m_userTable->setColumnWidth(1, 64);
+    m_userTable->setColumnWidth(2, 64);
     m_userTable->horizontalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_userTable->horizontalHeader(), &QWidget::customContextMenuRequested,
             this, [this](const QPoint& pos) {
@@ -907,6 +1062,24 @@ void KailleraServerBrowserDialog::setupUI()
     m_bottomStack->setCurrentIndex(0);
     mainLayout->addWidget(m_bottomStack, 2);
 
+    if (!modern && m_userTable != nullptr)
+    {
+        const int normalizedHeaderHeight = qMax(
+            m_userTable->horizontalHeader()->sizeHint().height(),
+            qMax(
+                m_gameTable != nullptr ? m_gameTable->horizontalHeader()->sizeHint().height() : 0,
+                m_roomLobbyTable != nullptr ? m_roomLobbyTable->horizontalHeader()->sizeHint().height() : 0));
+        m_userTable->horizontalHeader()->setFixedHeight(normalizedHeaderHeight);
+        if (m_gameTable != nullptr)
+        {
+            m_gameTable->horizontalHeader()->setFixedHeight(normalizedHeaderHeight);
+        }
+        if (m_roomLobbyTable != nullptr)
+        {
+            m_roomLobbyTable->horizontalHeader()->setFixedHeight(normalizedHeaderHeight);
+        }
+    }
+
     // Build game list context menu for Create Game
     m_gameListMenu = new QMenu(this);
     buildGameListMenu();
@@ -915,6 +1088,9 @@ void KailleraServerBrowserDialog::setupUI()
 
 QWidget* KailleraServerBrowserDialog::createGameListWidget()
 {
+    const QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    const bool modern = (theme == "Modern");
+
     auto* widget = new QWidget();
     auto* layout = new QVBoxLayout(widget);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -930,6 +1106,7 @@ QWidget* KailleraServerBrowserDialog::createGameListWidget()
     m_gameTable = new QTableWidget(0, 6, pane);
     m_gameTable->setObjectName("KailleraSurface");
     m_gameTable->setProperty("mainGameList", true);
+    m_gameTable->setProperty("tableShell", true);
     m_gameTable->setHorizontalHeaderLabels({"Game", "GameID", "Emulator", "User", "Status", "Users"});
     m_gameTable->horizontalHeader()->setStretchLastSection(false);
     m_gameTable->verticalHeader()->setVisible(false);
@@ -967,7 +1144,16 @@ QWidget* KailleraServerBrowserDialog::createGameListWidget()
     m_btnCreateSwap->setObjectName("KailleraFabButton");
     m_btnCreateSwap->setToolTip("Create a game");
     m_btnCreateSwap->setText("");
-    m_btnCreateSwap->setIcon(whiteLineIcon("add-line"));
+    configureServerFabMetrics(m_btnCreateSwap);
+    if (modern)
+    {
+        m_btnCreateSwap->setIcon(whiteLineIcon("add-line"));
+    }
+    else
+    {
+        m_btnCreateSwap->setIcon(themedLineIcon("add-line"));
+        configureServerAccentPalette(m_btnCreateSwap);
+    }
     m_btnCreateSwap->setIconSize(QSize(22, 22));
     m_btnCreateSwap->setCursor(Qt::PointingHandCursor);
     m_btnCreateSwap->setAutoDefault(false);
@@ -983,17 +1169,18 @@ QWidget* KailleraServerBrowserDialog::createGameListWidget()
 
 QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
 {
+    const QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    const bool modern = (theme == "Modern");
+
     auto* widget = new QWidget();
     auto* layout = new QVBoxLayout(widget);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(8);
 
     // Main game room area: Game chat (left) + Player list (center) + Buttons (right)
-    m_roomSplitter = new QSplitter(Qt::Horizontal, widget);
+    m_roomSplitter = new ThinSplitter(Qt::Horizontal, widget);
     m_roomSplitter->setObjectName("KailleraJoinedSplitter");
     m_roomSplitter->setHandleWidth(1);
-    auto* roomSplitterStyle = new ThinSplitterStyle();
-    m_roomSplitter->setStyle(roomSplitterStyle);
     auto* roomSplitter = m_roomSplitter;
 
     // Game chat (left)
@@ -1018,6 +1205,7 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
     m_btnSwapChat = new QPushButton("Show lobbies", chatHeader);
     m_btnSwapChat->setObjectName("KailleraTinyButton");
     m_btnSwapChat->setIcon(themedLineIcon("swap-line"));
+    configureServerTinyButtonMetrics(m_btnSwapChat);
     m_btnSwapChat->setToolTip("Show open lobbies");
     m_btnSwapChat->setAutoDefault(false);
     m_btnSwapChat->setDefault(false);
@@ -1079,7 +1267,8 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
     m_roomLobbyTable->setProperty("roomLobbySnapshot", true);
     m_roomLobbyTable->setHorizontalHeaderLabels({"Game", "GameID", "Emulator", "User", "Status", "Users"});
     m_roomLobbyTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
-    m_roomLobbyTable->horizontalHeader()->setStretchLastSection(true);
+    m_roomLobbyTable->horizontalHeader()->setStretchLastSection(false);
+    m_roomLobbyTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
     m_roomLobbyTable->verticalHeader()->setVisible(false);
     m_roomLobbyTable->setShowGrid(false);
     m_roomLobbyTable->setAlternatingRowColors(true);
@@ -1191,7 +1380,16 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
 
     m_btnStart = new QPushButton("Start", rightWidget);
     m_btnStart->setObjectName("KailleraStartButton");
-    m_btnStart->setIcon(whiteLineIcon("play-line"));
+    configureServerStartButtonMetrics(m_btnStart);
+    if (modern)
+    {
+        m_btnStart->setIcon(whiteLineIcon("play-line"));
+    }
+    else
+    {
+        m_btnStart->setIcon(themedLineIcon("play-line"));
+        configureServerAccentPalette(m_btnStart);
+    }
     m_btnStart->setIconSize(QSize(16, 16));
     m_btnStart->setAutoDefault(false);
     m_btnStart->setDefault(false);
@@ -1201,12 +1399,14 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
     utilityRow->setSpacing(6);
     m_btnLagStat = new QPushButton("Lagstat", rightWidget);
     m_btnLagStat->setObjectName("KailleraSecondaryButton");
+    configureServerButtonMetrics(m_btnLagStat);
     m_btnLagStat->setIcon(themedLineIcon("search-line"));
     m_btnLagStat->setIconSize(QSize(16, 16));
     m_btnLagStat->setAutoDefault(false);
     m_btnLagStat->setDefault(false);
     m_btnAdvertise = new QPushButton("Advertise", rightWidget);
     m_btnAdvertise->setObjectName("KailleraSecondaryButton");
+    configureServerButtonMetrics(m_btnAdvertise);
     m_btnAdvertise->setIcon(themedLineIcon("volume-up-line"));
     m_btnAdvertise->setIconSize(QSize(16, 16));
     m_btnAdvertise->setAutoDefault(false);
@@ -1217,6 +1417,7 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
 
     m_btnDrop = new QPushButton("Close Game", rightWidget);
     m_btnDrop->setObjectName("KailleraSecondaryButton");
+    configureServerButtonMetrics(m_btnDrop);
     m_btnDrop->setIcon(themedLineIcon("shut-down-line"));
     m_btnDrop->setIconSize(QSize(16, 16));
     m_btnDrop->setAutoDefault(false);
@@ -1225,6 +1426,7 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
 
     m_btnLeave = new QPushButton("Leave Lobby", rightWidget);
     m_btnLeave->setObjectName("KailleraSecondaryButton");
+    configureServerButtonMetrics(m_btnLeave);
     m_btnLeave->setIcon(themedLineIcon("door-open-line"));
     m_btnLeave->setIconSize(QSize(16, 16));
     m_btnLeave->setAutoDefault(false);
@@ -1695,6 +1897,8 @@ void KailleraServerBrowserDialog::refreshPlayerCards()
         return;
     }
 
+    const QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    const bool modern = (theme == "Modern");
     const QColor frameColor = palette().text().color();
     const QString msColorCss = "rgba(0, 0, 0, 0.55)";
 
@@ -1714,10 +1918,22 @@ void KailleraServerBrowserDialog::refreshPlayerCards()
         auto* card = new QWidget(m_playerList);
         card->setObjectName("KailleraPlayerCard");
         const QColor portColor = playerPortColor(row);
-        const QColor cardTint = blendColors(portColor, palette().base().color(), 16);
-        card->setStyleSheet(QString(
-            "QWidget#KailleraPlayerCard { border: none; border-radius: 8px; background-color: %1; }")
-            .arg(cardTint.name()));
+        if (modern)
+        {
+            const QColor cardTint = blendColors(portColor, palette().base().color(), 16);
+            card->setStyleSheet(QString(
+                "QWidget#KailleraPlayerCard { border: none; border-radius: 8px; background-color: %1; }")
+                .arg(cardTint.name()));
+        }
+        else
+        {
+            card->setStyleSheet(
+                "QWidget#KailleraPlayerCard {"
+                "  border: 1px solid palette(mid);"
+                "  border-radius: 2px;"
+                "  background-color: palette(base);"
+                "}");
+        }
         auto* cardLayout = new QHBoxLayout(card);
         cardLayout->setContentsMargins(8, 6, 8, 6);
         cardLayout->setSpacing(8);
@@ -1726,8 +1942,9 @@ void KailleraServerBrowserDialog::refreshPlayerCards()
         portBadge->setFixedSize(22, 22);
         portBadge->setAlignment(Qt::AlignCenter);
         portBadge->setStyleSheet(QString(
-            "QLabel { border-radius: 11px; background-color: %1; color: white; font-weight: 700; }")
-            .arg(portColor.name()));
+            "QLabel { border-radius: %2px; background-color: %1; color: white; font-weight: 700; }")
+            .arg(portColor.name())
+            .arg(modern ? 11 : 4));
 
         auto* textColumn = new QVBoxLayout();
         textColumn->setContentsMargins(0, 0, 0, 0);
