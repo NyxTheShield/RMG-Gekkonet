@@ -21,6 +21,7 @@
 #include <climits>
 #include <fstream>
 #include <filesystem>
+#include <vector>
 
 #include "common/nThread.h"
 #include "common/k_socket.h"
@@ -386,6 +387,9 @@ public:
     char* ptr = nullptr;
     char* end = nullptr;
 
+    std::vector<char*> frameIndex;
+    int currentFrameIdx = 0;
+
     void load_bytes(void* dest, unsigned int len) {
         if (ptr + 10 < end) {
             unsigned int avail = (unsigned int)(end - ptr);
@@ -421,6 +425,7 @@ static int player_MPV(void* values, int size) {
                 }
                 if (l > 0)
                     PlayBackBuffer.load_bytes((char*)values, l);
+                PlayBackBuffer.currentFrameIdx++;
                 return l;
             }
             if (b == 20) {
@@ -530,11 +535,53 @@ static bool player_play(const char* fn) {
     // Skip to record data
     PlayBackBuffer.ptr = PlayBackBuffer.buffer + headerSize;
 
+    // Build frame index for seeking
+    PlayBackBuffer.frameIndex.clear();
+    {
+        char* scan = PlayBackBuffer.buffer + headerSize;
+        while (scan + 1 < PlayBackBuffer.end) {
+            unsigned char type = (unsigned char)*scan;
+            if (type == 0x12) {
+                PlayBackBuffer.frameIndex.push_back(scan);
+                scan++;
+                if (scan + 2 > PlayBackBuffer.end) break;
+                unsigned short rlen = *(unsigned short*)scan;
+                scan += 2;
+                if (rlen > 0) {
+                    if (scan + rlen > PlayBackBuffer.end) break;
+                    scan += rlen;
+                }
+            } else if (type == 0x14) {
+                scan++;
+                while (scan < PlayBackBuffer.end && *scan != 0) scan++;
+                if (scan < PlayBackBuffer.end) scan++;
+                scan += 4;
+            } else if (type == 0x08) {
+                scan++;
+                while (scan < PlayBackBuffer.end && *scan != 0) scan++;
+                if (scan < PlayBackBuffer.end) scan++;
+                while (scan < PlayBackBuffer.end && *scan != 0) scan++;
+                if (scan < PlayBackBuffer.end) scan++;
+            } else {
+                break;
+            }
+        }
+    }
+    PlayBackBuffer.currentFrameIdx = 0;
+
     player_playing = true;
     memset(player_was_dropped, 0, sizeof(player_was_dropped));
 
     KSSDFA.input = KSSDFA_START_GAME;
 
+    return true;
+}
+
+static bool player_seekToFrame(int frameIdx) {
+    if (!player_playing) return false;
+    if (frameIdx < 0 || frameIdx >= (int)PlayBackBuffer.frameIndex.size()) return false;
+    PlayBackBuffer.ptr = PlayBackBuffer.frameIndex[frameIdx];
+    PlayBackBuffer.currentFrameIdx = frameIdx;
     return true;
 }
 
@@ -801,6 +848,18 @@ bool playbackLoad(const char* filename) {
 
 bool isPlaybackActive() {
     return player_playing;
+}
+
+bool playbackSeekToFrame(int frameIdx) {
+    return player_seekToFrame(frameIdx);
+}
+
+int playbackGetCurrentFrame() {
+    return PlayBackBuffer.currentFrameIdx;
+}
+
+int playbackGetTotalFrames() {
+    return (int)PlayBackBuffer.frameIndex.size();
 }
 
 } // namespace n02

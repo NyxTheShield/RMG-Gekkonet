@@ -242,6 +242,11 @@ CORE_EXPORT bool CoreHasInitKaillera(void)
     return s_Initialized && s_GameActive;
 }
 
+CORE_EXPORT bool CoreIsKailleraPlaybackMode(void)
+{
+    return s_Initialized && s_GameActive && (n02::getActiveMode() == 2);
+}
+
 CORE_EXPORT bool CoreShowKailleraServerDialog(void* parentHwnd)
 {
     if (!s_Initialized)

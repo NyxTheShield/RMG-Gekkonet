@@ -292,6 +292,9 @@ static l_Setting get_setting(SettingsID settingId)
     case SettingsID::Kaillera_PlayerColumnWidths:
         setting = {SETTING_SECTION_KAILLERA, "PlayerColumnWidths", std::string("")};
         break;
+    case SettingsID::Kaillera_P2PLastGame:
+        setting = {SETTING_SECTION_KAILLERA, "P2PLastGame", std::string("")};
+        break;
 
     case SettingsID::Core_GFX_Plugin:
         setting = {SETTING_SECTION_CORE, "GFX_Plugin", 

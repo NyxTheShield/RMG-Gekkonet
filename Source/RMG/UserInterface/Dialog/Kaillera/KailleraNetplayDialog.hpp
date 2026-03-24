@@ -19,6 +19,7 @@
 #include <QLineEdit>
 #include <QComboBox>
 #include <QPushButton>
+#include <QToolButton>
 #include <QLabel>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>

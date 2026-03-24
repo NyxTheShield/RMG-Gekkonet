@@ -31,6 +31,9 @@ bool CorePauseEmulation(void);
 // resumes emulation
 bool CoreResumeEmulation(void);
 
+// advances emulation by one frame (must be paused)
+bool CoreAdvanceFrame(void);
+
 // resets emulation
 bool CoreResetEmulation(bool hard);
 

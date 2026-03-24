@@ -26,6 +26,7 @@
 #if defined(NETPLAY) && defined(_WIN32)
 #include "KailleraUIBridge.hpp"
 #include "Dialog/Kaillera/KailleraPlaybackDialog.hpp"
+#include "n02_client.h"
 #endif
 #include "UserInterface/EventFilter.hpp"
 #include "Utilities/QtKeyToSdl3Key.hpp"
@@ -2456,8 +2457,48 @@ void MainWindow::on_Action_Playback(void)
         return;
     }
 
+    // Ensure session manager exists so gameCallback is wired up.
+    // Without this, the state machine reaches state 1 but has no
+    // callback to actually start emulation.
+    if (this->kailleraSessionManager == nullptr)
+    {
+        this->kailleraSessionManager = new KailleraSessionManager(this);
+        connect(this->kailleraSessionManager, &KailleraSessionManager::gameStarted,
+                this, &MainWindow::on_Kaillera_GameStarted);
+        connect(this->kailleraSessionManager, &KailleraSessionManager::chatReceived,
+                this, &MainWindow::on_Kaillera_ChatReceived);
+        connect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
+                this, &MainWindow::on_Kaillera_ChatReceived);
+        connect(&KailleraUIBridge::instance(), &KailleraUIBridge::p2pChatReceived,
+                this, &MainWindow::on_Kaillera_ChatReceived);
+        connect(&KailleraUIBridge::instance(), &KailleraUIBridge::recordingFileClosed,
+                this, &MainWindow::on_Kaillera_RecordingFileClosed);
+        connect(this->kailleraSessionManager, &KailleraSessionManager::playerDropped,
+                this, &MainWindow::on_Kaillera_PlayerDropped);
+        connect(this->kailleraSessionManager, &KailleraSessionManager::gameEnded,
+                this, &MainWindow::on_Kaillera_GameEnded);
+    }
+
+    // Activate playback mode so the state machine uses the playback module
+    n02::activateMode(2);
+
     auto* dialog = new KailleraPlaybackDialog(this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &QDialog::destroyed, this, [this]() {
+        if (this->kailleraSessionManager != nullptr)
+        {
+            disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
+                       this, &MainWindow::on_Kaillera_ChatReceived);
+            disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::p2pChatReceived,
+                       this, &MainWindow::on_Kaillera_ChatReceived);
+            disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::recordingFileClosed,
+                       this, &MainWindow::on_Kaillera_RecordingFileClosed);
+            delete this->kailleraSessionManager;
+            this->kailleraSessionManager = nullptr;
+            CoreShutdownKaillera();
+            this->updateUI(this->emulationThread->isRunning(), CoreIsEmulationPaused());
+        }
+    });
     dialog->show();
 #endif // NETPLAY && _WIN32
 }

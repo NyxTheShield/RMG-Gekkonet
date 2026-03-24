@@ -129,6 +129,15 @@ bool playbackLoad(const char* filename);
 // Check if playback is currently active
 bool isPlaybackActive();
 
+// Seek playback to a specific frame index (0-based). Only safe while paused.
+bool playbackSeekToFrame(int frameIdx);
+
+// Get the current playback frame index
+int playbackGetCurrentFrame();
+
+// Get the total number of frames in the loaded recording
+int playbackGetTotalFrames();
+
 } // namespace n02
 
 // Global recording flag — set by Qt UI, read by recording stub

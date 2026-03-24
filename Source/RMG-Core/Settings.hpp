@@ -86,6 +86,7 @@ enum class SettingsID
     Kaillera_UserColumnWidths,
     Kaillera_GameColumnWidths,
     Kaillera_PlayerColumnWidths,
+    Kaillera_P2PLastGame,
 
     // Core Plugin Settings
     Core_GFX_Plugin,

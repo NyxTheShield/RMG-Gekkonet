@@ -54,6 +54,7 @@
 #include <QStylePainter>
 #include <QStyledItemDelegate>
 #include <QStringList>
+#include <QToolButton>
 
 #include <chrono>
 #include <cstring>
@@ -1030,23 +1031,29 @@ QWidget* KailleraNetplayDialog::createServerTab()
     m_btnAdd->setToolTip("Add a custom server");
     const bool useLauncherSkin =
         (theme == "Modern" || theme == "Fusion" || theme == "Fusion Warm" || theme == "Fusion Dark");
-    if (useLauncherSkin)
-    {
-        m_btnAdd->setText("");
-        m_btnAdd->setIcon(QIcon(":/icons/white/svg/add-line.svg"));
-    }
-    else
-    {
-        QFont addFont = m_btnAdd->font();
-        addFont.setPointSize(addFont.pointSize() + 6);
-        addFont.setBold(true);
-        m_btnAdd->setFont(addFont);
-        m_btnAdd->setText("+");
-        m_btnAdd->setIcon(QIcon());
-    }
+    m_btnAdd->setText("");
+    m_btnAdd->setIcon(QIcon(":/icons/white/svg/add-line.svg"));
     m_btnAdd->setIconSize(QSize(22, 22));
     m_btnAdd->setCursor(Qt::PointingHandCursor);
     m_btnAdd->setFixedSize(46, 46);
+    if (!useLauncherSkin)
+    {
+        m_btnAdd->setStyleSheet(
+            "QPushButton {"
+            "  border: 1px solid #005a9e;"
+            "  border-radius: 6px;"
+            "  padding: 0px;"
+            "  background-color: #0078D7;"
+            "  color: white;"
+            "}"
+            "QPushButton:hover {"
+            "  background-color: #1c88dc;"
+            "}"
+            "QPushButton:pressed {"
+            "  border-color: #004f8b;"
+            "  background-color: #005a9e;"
+            "}");
+    }
     configureLauncherAccentPalette(m_btnAdd);
     connect(m_btnAdd, &QPushButton::clicked, this, &KailleraNetplayDialog::onAddServer);
     attachFloatingCornerButton(tablePane, m_btnAdd, 20, 14);
@@ -1148,7 +1155,13 @@ QWidget* KailleraNetplayDialog::createP2PTab()
 
     if (m_p2pGameCombo->count() > 0)
     {
-        m_p2pGameCombo->setCurrentIndex(0);
+        std::string lastGame = CoreSettingsGetStringValue(SettingsID::Kaillera_P2PLastGame);
+        int idx = -1;
+        if (!lastGame.empty())
+        {
+            idx = m_p2pGameCombo->findText(QString::fromStdString(lastGame));
+        }
+        m_p2pGameCombo->setCurrentIndex(idx >= 0 ? idx : 0);
     }
 
     // Host port + Host button
@@ -1316,6 +1329,12 @@ void KailleraNetplayDialog::saveSettings()
     // Mode order: 0=P2P, 1=Server
     int mode = (m_tabWidget->currentIndex() == 1) ? 0 : 1;
     CoreSettingsSetValue(SettingsID::Kaillera_ActiveMode, mode);
+
+    if (m_p2pGameCombo && m_p2pGameCombo->currentIndex() >= 0)
+    {
+        CoreSettingsSetValue(SettingsID::Kaillera_P2PLastGame,
+                             m_p2pGameCombo->currentText().toStdString());
+    }
 }
 
 void KailleraNetplayDialog::loadServerList()
