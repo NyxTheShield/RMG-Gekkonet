@@ -566,8 +566,12 @@ public:
     explicit LauncherTabBar(QWidget* parent = nullptr)
         : QTabBar(parent)
     {
-        setDrawBase(false);
         setElideMode(Qt::ElideNone);
+    }
+
+    void setModernMode(bool modern)
+    {
+        setDrawBase(!modern);
     }
 
     QSize tabSizeHint(int index) const override
@@ -627,24 +631,20 @@ static QString buildLauncherStyleSheet(const QString& theme)
     }
 
     const QString paneRadius = modern ? "10px" : "2px";
-    const QString tabRadius = modern ? "8px" : "0px";
     const QString controlRadius = modern ? "7px" : "2px";
     const QString fabRadius = modern ? "23px" : "6px";
     const QString dividerColor = modern ? "palette(mid)" : "palette(midlight)";
-    const QString tabMargin = modern ? "0px" : "2px";
-    const QString tabWeight = modern ? "600" : "500";
-    const QString tabBarLeftOffset = modern ? "8px" : "12px";
     const QString comboDropWidth = modern ? "24px" : "32px";
     const QString comboDropRadius = modern ? controlRadius : "0px";
     const QString comboDropBackground = modern ? "transparent" : "palette(button)";
     const QString lineEditVerticalPadding = modern ? "5px" : "1px";
     const QPalette appPalette = QApplication::palette();
     const QColor windowColor = appPalette.window().color();
+    const QColor shellColor = modern
+        ? appPalette.base().color()
+        : blendColors(windowColor, appPalette.base().color(), 0.75);
+    const QString shellBackground = cssColor(shellColor);
     const bool darkTheme = windowColor.value() < 128;
-    const QColor inactiveTabColor = darkTheme
-        ? blendColors(windowColor, QColor(Qt::white), modern ? 0.18 : 0.15)
-        : blendColors(windowColor, QColor(Qt::white), modern ? 0.48 : 0.38);
-    const QString inactiveTabBackground = cssColor(inactiveTabColor);
     const QString comboArrowIcon = QString(":/icons/%1/svg/arrow-down-s-line.svg")
         .arg(darkTheme ? "white" : "black");
 
@@ -655,7 +655,7 @@ static QString buildLauncherStyleSheet(const QString& theme)
         "QWidget#KailleraPane, QGroupBox#KailleraPane, QWidget#KailleraPaneGameList {"
         "  border: 1px solid palette(mid);"
         "  border-radius: %1;"
-        "  background-color: palette(base);"
+        "  background-color: %10;"
         "}"
         "QLabel#KailleraFieldLabel {"
         "  color: palette(text);"
@@ -666,35 +666,11 @@ static QString buildLauncherStyleSheet(const QString& theme)
         "  font-weight: 600;"
         "  font-size: 15px;"
         "}"
-        "QTabWidget#KailleraLauncherTabs::pane {"
-        "  border-top: 1px solid palette(mid);"
-        "  border-left: none;"
-        "  border-right: none;"
-        "  border-bottom: none;"
-        "  border-radius: 0px;"
-        "  background-color: palette(base);"
-        "  top: -1px;"
-        "}"
-        "QTabWidget#KailleraLauncherTabs::tab-bar {"
-        "  left: %2;"
-        "}"
-        "QTabWidget#KailleraLauncherTabs QTabBar::tab {"
-        "  border: 1px solid palette(mid);"
-        "  border-top-left-radius: %3;"
-        "  border-top-right-radius: %3;"
-        "  padding: 7px 14px;"
-        "  margin-right: %4;"
-        "}"
-        "QTabWidget#KailleraLauncherTabs QTabBar::tab:selected {"
-        "  background-color: palette(base);"
-        "  border-bottom: none;"
-        "  font-weight: %5;"
-        "}"
         "QLineEdit#KailleraInput {"
         "  border: 1px solid palette(mid);"
-        "  border-radius: %6;"
+        "  border-radius: %2;"
         "  background-color: palette(base);"
-        "  padding: %13 8px;"
+        "  padding: %9 8px;"
         "}"
         "QLineEdit#KailleraInput:focus {"
         "  border-color: palette(highlight);"
@@ -719,14 +695,10 @@ static QString buildLauncherStyleSheet(const QString& theme)
         "  color: palette(text);"
         "}"
         "QFrame#KailleraDivider {"
-        "  background-color: %12;"
+        "  background-color: %8;"
         "  max-height: 1px;"
         "}").arg(
             paneRadius,
-            tabBarLeftOffset,
-            tabRadius,
-            tabMargin,
-            tabWeight,
             controlRadius,
             comboDropWidth,
             comboDropRadius,
@@ -734,12 +706,8 @@ static QString buildLauncherStyleSheet(const QString& theme)
             comboArrowIcon,
             fabRadius,
             dividerColor,
-            lineEditVerticalPadding);
-
-    style += QString(
-        "QTabWidget#KailleraLauncherTabs QTabBar::tab:!selected {"
-        "  background-color: %1;"
-        "}").arg(inactiveTabBackground);
+            lineEditVerticalPadding,
+            shellBackground);
 
     style += QString(
         "QTableWidget#KailleraSurface[launcherServerTable=\"true\"] {"
@@ -753,6 +721,33 @@ static QString buildLauncherStyleSheet(const QString& theme)
     if (modern)
     {
         style += QString(
+            "QTabWidget#KailleraLauncherTabs::pane {"
+            "  border-top: 1px solid palette(mid);"
+            "  border-left: none;"
+            "  border-right: none;"
+            "  border-bottom: none;"
+            "  border-radius: 0px;"
+            "  background-color: %3;"
+            "  top: -1px;"
+            "}"
+            "QTabWidget#KailleraLauncherTabs::tab-bar {"
+            "  left: 8px;"
+            "}"
+            "QTabWidget#KailleraLauncherTabs QTabBar::tab {"
+            "  border: 1px solid palette(mid);"
+            "  border-top-left-radius: 8px;"
+            "  border-top-right-radius: 8px;"
+            "  padding: 7px 14px;"
+            "  margin-right: 0px;"
+            "}"
+            "QTabWidget#KailleraLauncherTabs QTabBar::tab:selected {"
+            "  background-color: palette(base);"
+            "  border-bottom: none;"
+            "  font-weight: 600;"
+            "}"
+            "QTabWidget#KailleraLauncherTabs QTabBar::tab:!selected {"
+            "  background-color: %4;"
+            "}"
             "QWidget#KailleraPaneGameList {"
             "  border-radius: 0px;"
             "}"
@@ -856,7 +851,14 @@ static QString buildLauncherStyleSheet(const QString& theme)
             "QPushButton#KailleraFabButton:pressed {"
             "  border-color: #004f8b;"
             "  background-color: #005a9e;"
-            "}").arg(controlRadius, fabRadius, comboArrowIcon);
+            "}").arg(
+                controlRadius,
+                fabRadius,
+                shellBackground,
+                cssColor(darkTheme
+                    ? blendColors(windowColor, QColor(Qt::white), 0.18)
+                    : blendColors(windowColor, QColor(Qt::white), 0.48)),
+                comboArrowIcon);
     }
 
     return style;
@@ -951,6 +953,10 @@ void KailleraNetplayDialog::setupUI()
     // Mode tabs
     m_tabWidget = new LauncherTabWidget(this);
     m_tabWidget->setObjectName("KailleraLauncherTabs");
+    if (auto* launcherTabBar = static_cast<LauncherTabBar*>(m_tabWidget->tabBar()))
+    {
+        launcherTabBar->setModernMode(theme == "Modern");
+    }
     m_tabWidget->addTab(createServerTab(), "Server");
     m_tabWidget->addTab(createP2PTab(), "Peer to Peer");
     connect(m_tabWidget, &QTabWidget::currentChanged, this, &KailleraNetplayDialog::onTabChanged);

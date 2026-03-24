@@ -476,29 +476,22 @@ void KailleraP2PDialog::setupUI()
 
         auto* codeRow = new QHBoxLayout();
         codeRow->setContentsMargins(0, 0, 0, 0);
-        codeRow->setSpacing(6);
+        codeRow->setSpacing(0);
 
         m_connectCodeEdit = new QLineEdit(m_hostGroup);
         m_connectCodeEdit->setObjectName("KailleraP2PInput");
         m_connectCodeEdit->setReadOnly(true);
         m_connectCodeEdit->setText("{waiting}");
+        m_copyAction = m_connectCodeEdit->addAction(themedP2PIcon("copy-line"), QLineEdit::TrailingPosition);
+        m_copyAction->setToolTip("Copy to clipboard");
+        connect(m_copyAction, &QAction::triggered, this, &KailleraP2PDialog::onCopyConnectCode);
         codeRow->addWidget(m_connectCodeEdit, 1);
-
-        m_btnCopy = new QPushButton(m_hostGroup);
-        m_btnCopy->setObjectName("KailleraP2PIconButton");
-        m_btnCopy->setToolTip("Copy connect code");
-        m_btnCopy->setIcon(themedP2PIcon("file-line"));
-        m_btnCopy->setIconSize(QSize(14, 14));
-        m_btnCopy->setFixedSize(28, 28);
-        codeRow->addWidget(m_btnCopy, 0, Qt::AlignVCenter);
         hostLayout->addLayout(codeRow);
 
         m_enlistCheck = new QCheckBox("Show on public list", m_hostGroup);
         hostLayout->addWidget(m_enlistCheck);
 
         bottomLayout->addWidget(m_hostGroup, 0, Qt::AlignTop);
-
-        connect(m_btnCopy, &QPushButton::clicked, this, &KailleraP2PDialog::onCopyConnectCode);
         connect(m_enlistCheck, &QCheckBox::toggled, this, [this](bool checked) {
             if (checked)
                 enlistGame();
@@ -514,6 +507,18 @@ void KailleraP2PDialog::setupUI()
     connect(m_chatInput, &QLineEdit::returnPressed, this, &KailleraP2PDialog::onSendChat);
     connect(m_btnReady, &QPushButton::clicked, this, &KailleraP2PDialog::onReady);
     connect(m_btnDrop, &QPushButton::clicked, this, &KailleraP2PDialog::onDrop);
+
+    m_copyFeedbackTimer = new QTimer(this);
+    m_copyFeedbackTimer->setSingleShot(true);
+    connect(m_copyFeedbackTimer, &QTimer::timeout, this, [this]() {
+        if (m_copyAction == nullptr)
+        {
+            return;
+        }
+
+        m_copyAction->setIcon(themedP2PIcon("copy-line"));
+        m_copyAction->setToolTip("Copy to clipboard");
+    });
 }
 
 void KailleraP2PDialog::connectSignals()
@@ -684,7 +689,7 @@ void KailleraP2PDialog::updateHostCodeUI()
 
     const bool codeActive = !m_travHostRegSuspended;
     if (m_connectCodeEdit) m_connectCodeEdit->setEnabled(codeActive);
-    if (m_btnCopy) m_btnCopy->setEnabled(codeActive);
+    if (m_copyAction) m_copyAction->setEnabled(codeActive);
     if (m_enlistCheck) m_enlistCheck->setEnabled(codeActive);
 
     if (!codeActive)
@@ -704,12 +709,12 @@ void KailleraP2PDialog::updateHostCodeUI()
     else if (m_travHostIpPending)
     {
         m_connectCodeEdit->setText("(checking ip)");
-        if (m_btnCopy) m_btnCopy->setEnabled(false);
+        if (m_copyAction) m_copyAction->setEnabled(false);
     }
     else
     {
         m_connectCodeEdit->setText("(waiting)");
-        if (m_btnCopy) m_btnCopy->setEnabled(false);
+        if (m_copyAction) m_copyAction->setEnabled(false);
     }
 }
 
@@ -1121,6 +1126,21 @@ void KailleraP2PDialog::onCopyConnectCode()
     {
         QApplication::clipboard()->setText(m_travHostIpPort);
         m_chat->append(timestamp() + "Copied " + m_travHostIpPort + " to clipboard");
+    }
+    else
+    {
+        return;
+    }
+
+    if (m_copyAction != nullptr)
+    {
+        m_copyAction->setIcon(themedP2PIcon("copy-check-line"));
+        m_copyAction->setToolTip("Copied");
+    }
+
+    if (m_copyFeedbackTimer != nullptr)
+    {
+        m_copyFeedbackTimer->start(1200);
     }
 }
 
