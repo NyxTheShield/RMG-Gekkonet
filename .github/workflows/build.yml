@@ -54,14 +54,6 @@ jobs:
       - name: Prepare Environment
         run: |
           echo "GIT_REVISION=$(git describe --tags --always)" >> $GITHUB_ENV
-
-          # For pre-release tags (e.g. v0.8.22-beta), override the Kaillera app version
-          # to the base version (v0.8.22) so players can match with stable release users
-          TAG=$(git describe --tags --exact-match 2>/dev/null || true)
-          if [[ "$TAG" == *-* ]]; then
-            BASE_VERSION=$(echo "$TAG" | sed 's/-.*//')
-            echo "KAILLERA_VERSION_OVERRIDE=$BASE_VERSION" >> $GITHUB_ENV
-          fi
       - name: Build SDL3
         run: |
           export sdl_dir="$(pwd)/../SDL3"
@@ -94,7 +86,6 @@ jobs:
                 -DPORTABLE_INSTALL=OFF \
                 -DCMAKE_INSTALL_PREFIX="/usr" \
                 -DCMAKE_INSTALL_LIBDIR="lib"  \
-                ${KAILLERA_VERSION_OVERRIDE:+-DKAILLERA_APP_VERSION_OVERRIDE="$KAILLERA_VERSION_OVERRIDE"} \
                 -G "Unix Makefiles"
 
           cmake --build "$build_dir" --parallel "$(nproc)"
@@ -157,14 +148,6 @@ jobs:
         run: |
           $env:revision = git describe --tags --always
           echo "GIT_REVISION=$env:revision" >> $env:GITHUB_ENV
-
-          # For pre-release tags (e.g. v0.8.22-beta), override the Kaillera app version
-          # to the base version (v0.8.22) so players can match with stable release users
-          $tag = git describe --tags --exact-match 2>$null
-          if ($tag -and $tag -match '-') {
-            $base = $tag -replace '-.*', ''
-            echo "KAILLERA_VERSION_OVERRIDE=$base" >> $env:GITHUB_ENV
-          }
         shell: pwsh
       # n02 Kaillera client is now compiled as a static library (Source/n02/)
       # No need to download kailleraclient.dll
@@ -179,7 +162,6 @@ jobs:
                 -DUSE_ANGRYLION=${{ matrix.features }} \
                 -DUPDATER=${{ matrix.features }} \
                 -DPORTABLE_INSTALL=ON \
-                ${KAILLERA_VERSION_OVERRIDE:+-DKAILLERA_APP_VERSION_OVERRIDE="$KAILLERA_VERSION_OVERRIDE"} \
                 -G "MSYS Makefiles"
 
           cmake --build "$build_dir" --parallel "$(nproc)"
