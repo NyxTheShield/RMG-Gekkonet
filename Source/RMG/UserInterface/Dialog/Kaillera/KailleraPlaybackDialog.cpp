@@ -86,24 +86,34 @@ void KailleraPlaybackDialog::setupUI()
     // Buttons
     auto* btnLayout = new QHBoxLayout();
     m_btnPlay = new QPushButton("Play", this);
+    m_btnPause = new QPushButton("Pause", this);
+    m_btnStepForward = new QPushButton(">>", this);
     m_btnStop = new QPushButton("Stop", this);
     m_btnPBDelete = new QPushButton("Delete", this);
     m_btnPBRefresh = new QPushButton("Refresh", this);
     m_btnOpenFolder = new QPushButton("Open Folder", this);
 
     connect(m_btnPlay, &QPushButton::clicked, this, &KailleraPlaybackDialog::onPlaybackPlay);
+    connect(m_btnPause, &QPushButton::clicked, this, &KailleraPlaybackDialog::onPlaybackPause);
+    connect(m_btnStepForward, &QPushButton::clicked, this, &KailleraPlaybackDialog::onPlaybackStepForward);
     connect(m_btnStop, &QPushButton::clicked, this, &KailleraPlaybackDialog::onPlaybackStop);
     connect(m_btnPBDelete, &QPushButton::clicked, this, &KailleraPlaybackDialog::onPlaybackDelete);
     connect(m_btnPBRefresh, &QPushButton::clicked, this, &KailleraPlaybackDialog::onPlaybackRefresh);
     connect(m_btnOpenFolder, &QPushButton::clicked, this, &KailleraPlaybackDialog::onPlaybackOpenFolder);
 
     btnLayout->addWidget(m_btnPlay);
+    btnLayout->addWidget(m_btnPause);
+    btnLayout->addWidget(m_btnStepForward);
     btnLayout->addWidget(m_btnStop);
     btnLayout->addWidget(m_btnPBDelete);
     btnLayout->addWidget(m_btnPBRefresh);
     btnLayout->addStretch();
     btnLayout->addWidget(m_btnOpenFolder);
     mainLayout->addLayout(btnLayout);
+
+    // Frame counter
+    m_frameLabel = new QLabel("", this);
+    mainLayout->addWidget(m_frameLabel);
 
     // Bottom close button
     auto* bottomLayout = new QHBoxLayout();
@@ -119,13 +129,29 @@ void KailleraPlaybackDialog::setupUI()
 
 void KailleraPlaybackDialog::onPlaybackTimer()
 {
+    // Drive the KSSDFA state machine so that KSSDFA_START_GAME (set by
+    // player_play) transitions to state 1->2 and fires gameCallback,
+    // which ultimately starts emulation.
+    n02::processStateMachineStep();
+
+    // Update frame counter display
+    if (n02::isPlaybackActive() && m_frameLabel)
+    {
+        int cur = n02::playbackGetCurrentFrame();
+        int total = n02::playbackGetTotalFrames();
+        m_frameLabel->setText(QString("Frame: %1 / %2").arg(cur).arg(total));
+    }
+    else if (m_frameLabel)
+    {
+        m_frameLabel->setText("");
+    }
+
     // Detect playback ending naturally (recording ran out).
-    // player_EndGame() sets player_playing=false and KSSDFA.state=0 from the
-    // emulation thread. If we were tracking an active playback and it just
-    // went inactive, stop emulation.
     if (m_playbackWasActive && !n02::isPlaybackActive())
     {
         m_playbackWasActive = false;
+        m_isPaused = false;
+        if (m_btnPause) m_btnPause->setText("Pause");
         CoreMarkKailleraGameInactive();
         CoreStopEmulation();
     }
@@ -404,15 +430,67 @@ void KailleraPlaybackDialog::onPlaybackPlay()
 
 void KailleraPlaybackDialog::onPlaybackStop()
 {
+    // Resume first if paused, so emulation can shut down cleanly
+    if (m_isPaused)
+    {
+        CoreResumeEmulation();
+        m_isPaused = false;
+        if (m_btnPause) m_btnPause->setText("Pause");
+    }
+
     if (n02::isPlaybackActive())
     {
         n02::endGame();
     }
-    // n02::endGame() transitions the state machine but doesn't stop emulation.
-    // Directly stop the emulator so playback actually ends.
     m_playbackWasActive = false;
     CoreMarkKailleraGameInactive();
     CoreStopEmulation();
+}
+
+void KailleraPlaybackDialog::onPlaybackPause()
+{
+    if (!n02::isPlaybackActive()) return;
+
+    if (!m_isPaused)
+    {
+        if (CorePauseEmulation())
+        {
+            m_isPaused = true;
+            if (m_btnPause) m_btnPause->setText("Resume");
+        }
+    }
+    else
+    {
+        if (CoreResumeEmulation())
+        {
+            m_isPaused = false;
+            if (m_btnPause) m_btnPause->setText("Pause");
+        }
+    }
+}
+
+void KailleraPlaybackDialog::onPlaybackStepForward()
+{
+    if (!n02::isPlaybackActive()) return;
+
+    // Pause first if running
+    if (!m_isPaused)
+    {
+        CorePauseEmulation();
+        m_isPaused = true;
+        if (m_btnPause) m_btnPause->setText("Resume");
+        return;
+    }
+
+    // Use M64CMD_ADVANCE_FRAME for precise single-frame stepping,
+    // then nudge with resume+pause to force the display to update.
+    CoreAdvanceFrame();
+    QTimer::singleShot(50, this, [this]() {
+        CoreResumeEmulation();
+        QTimer::singleShot(17, this, [this]() {
+            CorePauseEmulation();
+        });
+    });
 }
 
 void KailleraPlaybackDialog::onPlaybackDelete()

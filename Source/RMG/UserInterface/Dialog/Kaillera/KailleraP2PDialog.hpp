@@ -21,6 +21,7 @@
 #include <QComboBox>
 #include <QTimer>
 #include <QGroupBox>
+#include <QAction>
 
 class KailleraP2PDialog : public QDialog
 {
@@ -102,11 +103,12 @@ private:
     QGroupBox* m_hostGroup = nullptr;
     QComboBox* m_frameDelayCombo = nullptr;
     QLineEdit* m_connectCodeEdit = nullptr;
-    QPushButton* m_btnCopy = nullptr;
+    QAction* m_copyAction = nullptr;
 
     // Timers
     QTimer* m_stepTimer = nullptr;
     QTimer* m_travTimer = nullptr;
+    QTimer* m_copyFeedbackTimer = nullptr;
 
     // ---- NAT traversal state ----
     bool m_travHostEnabled = false;

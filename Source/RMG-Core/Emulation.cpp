@@ -621,7 +621,7 @@ CORE_EXPORT bool CorePauseEmulation(void)
         return false;
     }
 
-    if (CoreHasInitNetplay() || CoreHasInitKaillera())
+    if (CoreHasInitNetplay() || (CoreHasInitKaillera() && !CoreIsKailleraPlaybackMode()))
     {
         return false;
     }
@@ -655,7 +655,7 @@ CORE_EXPORT bool CoreResumeEmulation(void)
         return false;
     }
 
-    if (CoreHasInitNetplay() || CoreHasInitKaillera())
+    if (CoreHasInitNetplay() || (CoreHasInitKaillera() && !CoreIsKailleraPlaybackMode()))
     {
         return false;
     }
@@ -672,6 +672,37 @@ CORE_EXPORT bool CoreResumeEmulation(void)
     if (ret != M64ERR_SUCCESS)
     {
         error = "CoreResumeEmulation m64p::Core.DoCommand(M64CMD_RESUME) Failed: ";
+        error += m64p::Core.ErrorMessage(ret);
+        CoreSetError(error);
+    }
+
+    return ret == M64ERR_SUCCESS;
+}
+
+CORE_EXPORT bool CoreAdvanceFrame(void)
+{
+    std::string error;
+    m64p_error ret;
+
+    if (!m64p::Core.IsHooked())
+    {
+        return false;
+    }
+
+    if (CoreHasInitNetplay() || (CoreHasInitKaillera() && !CoreIsKailleraPlaybackMode()))
+    {
+        return false;
+    }
+
+    if (!CoreIsEmulationRunning() && !CoreIsEmulationPaused())
+    {
+        return false;
+    }
+
+    ret = m64p::Core.DoCommand(M64CMD_ADVANCE_FRAME, 0, nullptr);
+    if (ret != M64ERR_SUCCESS)
+    {
+        error = "CoreAdvanceFrame DoCommand(M64CMD_ADVANCE_FRAME) Failed: ";
         error += m64p::Core.ErrorMessage(ret);
         CoreSetError(error);
     }

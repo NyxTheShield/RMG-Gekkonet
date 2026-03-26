@@ -16,6 +16,7 @@
 #include <QTimer>
 #include <QTableWidget>
 #include <QPushButton>
+#include <QLabel>
 
 class KailleraPlaybackDialog : public QDialog
 {
@@ -28,6 +29,8 @@ public:
 private slots:
     void onPlaybackPlay();
     void onPlaybackStop();
+    void onPlaybackPause();
+    void onPlaybackStepForward();
     void onPlaybackDelete();
     void onPlaybackRefresh();
     void onPlaybackOpenFolder();
@@ -40,11 +43,15 @@ private:
 
     QTableWidget* m_playbackTable = nullptr;
     QPushButton* m_btnPlay = nullptr;
+    QPushButton* m_btnPause = nullptr;
+    QPushButton* m_btnStepForward = nullptr;
     QPushButton* m_btnStop = nullptr;
     QPushButton* m_btnPBDelete = nullptr;
     QPushButton* m_btnPBRefresh = nullptr;
     QPushButton* m_btnOpenFolder = nullptr;
+    QLabel* m_frameLabel = nullptr;
     bool m_playbackWasActive = false;
+    bool m_isPaused = false;
 
     QTimer* m_playbackTimer = nullptr;
 };
