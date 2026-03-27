@@ -61,7 +61,6 @@
 #include <QProxyStyle>
 #include <QStyledItemDelegate>
 #include <QStringList>
-#include <QToolButton>
 
 #include <chrono>
 #include <cstring>
@@ -287,6 +286,56 @@ static bool sendTraversalRequest(const QByteArray& payload, QList<QByteArray>& p
 static bool looksLikeTraversalCode(const QString& s);
 static QString normalizeTraversalCode(const QString& s);
 static QString normalizeTraversalClaimTarget(const QString& s);
+
+static bool confirmTraversalClaim(const QString& code, const QString& ownerToken, QString& error)
+{
+    if (code.isEmpty() || ownerToken.isEmpty())
+    {
+        error = "Missing claim confirmation data.";
+        return false;
+    }
+
+    QList<QByteArray> parts;
+    QByteArray payload = QByteArray(kN02TraversalProtocol) + "|CLAIMACK|" + ownerToken.toUtf8();
+    if (sendTraversalRequest(payload, parts, error))
+    {
+        if (parts[1] == "OK")
+        {
+            return true;
+        }
+
+        if (parts[1] == "ERR" && parts.size() >= 3)
+        {
+            error = "NAT server error: " + QString::fromUtf8(parts[2]);
+        }
+        else
+        {
+            error = "Unexpected response while confirming the claim.";
+        }
+    }
+
+    parts.clear();
+    payload = QByteArray(kN02TraversalProtocol) + "|CHECK|" + code.toUtf8() + "|" + ownerToken.toUtf8();
+    if (!sendTraversalRequest(payload, parts, error))
+    {
+        return false;
+    }
+
+    if (parts[1] == "CHECKOK" && parts.size() >= 3)
+    {
+        return normalizeTraversalCode(QString::fromUtf8(parts[2])) == normalizeTraversalCode(code);
+    }
+
+    if (parts[1] == "ERR" && parts.size() >= 3)
+    {
+        error = "NAT server error: " + QString::fromUtf8(parts[2]);
+    }
+    else
+    {
+        error = "Unexpected response while confirming the claim.";
+    }
+    return false;
+}
 
 class SearchableComboBox final : public QComboBox
 {
@@ -1097,10 +1146,14 @@ KailleraNetplayDialog::KailleraNetplayDialog(QWidget* parent)
         restoreGeometry(QByteArray::fromBase64(QByteArray::fromStdString(geom)));
     }
 
+    QTimer::singleShot(0, this, &KailleraNetplayDialog::maybeAutoClaimP2PStaticCode);
 }
 
 KailleraNetplayDialog::~KailleraNetplayDialog()
 {
+    m_p2pHostLaunchQueued = false;
+    cancelPendingP2PAutoClaim();
+
     if (m_stateMachineTimer)
     {
         m_stateMachineTimer->stop();
@@ -1378,15 +1431,10 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     m_p2pCurrentCodeEdit->setAlignment(Qt::AlignCenter);
     configureLauncherLineEditMetrics(m_p2pCurrentCodeEdit, theme);
     m_p2pCurrentCodeEdit->setFixedWidth(100);
+    m_p2pCopyAction = m_p2pCurrentCodeEdit->addAction(themedLineIcon("copy-line"), QLineEdit::TrailingPosition);
+    m_p2pCopyAction->setToolTip("Copy connect code");
+    connect(m_p2pCopyAction, &QAction::triggered, this, &KailleraNetplayDialog::onCopyP2PCode);
     codeLayout->addWidget(m_p2pCurrentCodeEdit);
-    m_btnP2PCopyCode = new QPushButton(hostBody);
-    m_btnP2PCopyCode->setObjectName("KailleraP2PIconButton");
-    m_btnP2PCopyCode->setToolTip("Copy connect code");
-    m_btnP2PCopyCode->setIcon(themedLineIcon("file-line"));
-    m_btnP2PCopyCode->setIconSize(QSize(14, 14));
-    m_btnP2PCopyCode->setFixedSize(28, 28);
-    connect(m_btnP2PCopyCode, &QPushButton::clicked, this, &KailleraNetplayDialog::onCopyP2PCode);
-    codeLayout->addWidget(m_btnP2PCopyCode, 0, Qt::AlignVCenter);
     m_btnP2PConfigureCode = new QPushButton("Configure", hostBody);
     m_btnP2PConfigureCode->setObjectName("KailleraSecondaryButton");
     configureLauncherButtonMetrics(m_btnP2PConfigureCode);
@@ -1394,6 +1442,18 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     codeLayout->addWidget(m_btnP2PConfigureCode);
     codeLayout->addStretch();
     hostBodyLayout->addLayout(codeLayout);
+
+    m_p2pCopyFeedbackTimer = new QTimer(this);
+    m_p2pCopyFeedbackTimer->setSingleShot(true);
+    connect(m_p2pCopyFeedbackTimer, &QTimer::timeout, this, [this]() {
+        if (m_p2pCopyAction == nullptr)
+        {
+            return;
+        }
+
+        m_p2pCopyAction->setIcon(themedLineIcon("copy-line"));
+        m_p2pCopyAction->setToolTip("Copy connect code");
+    });
 
     // Host button
     auto* hostBtnLayout = new QHBoxLayout();
@@ -2256,19 +2316,180 @@ void KailleraNetplayDialog::refreshP2PStaticCodeDisplay()
     }
 
     const QString code = currentP2PStaticCode();
-    if (!code.isEmpty())
+    const bool hasIdentity = !code.isEmpty() && !currentP2PStaticCodeOwnerToken().isEmpty();
+    if (hasIdentity)
     {
         m_p2pCurrentCodeEdit->setText(code);
     }
     else
     {
-        m_p2pCurrentCodeEdit->setText("None");
+        m_p2pCurrentCodeEdit->clear();
     }
 
-    if (m_btnP2PCopyCode)
+    if (m_p2pCopyAction)
     {
-        m_btnP2PCopyCode->setEnabled(!code.isEmpty());
+        m_p2pCopyAction->setEnabled(hasIdentity);
     }
+}
+
+void KailleraNetplayDialog::cancelPendingP2PAutoClaim()
+{
+    m_p2pAutoClaimAwaitingAck = false;
+    m_p2pAutoClaimPendingCode.clear();
+    m_p2pAutoClaimPendingToken.clear();
+
+    if (m_p2pAutoClaimTimeoutTimer != nullptr)
+    {
+        m_p2pAutoClaimTimeoutTimer->stop();
+        m_p2pAutoClaimTimeoutTimer->deleteLater();
+        m_p2pAutoClaimTimeoutTimer = nullptr;
+    }
+
+    if (m_p2pAutoClaimSocket != nullptr)
+    {
+        m_p2pAutoClaimSocket->close();
+        m_p2pAutoClaimSocket->deleteLater();
+        m_p2pAutoClaimSocket = nullptr;
+    }
+
+    if (m_p2pHostLaunchQueued)
+    {
+        m_p2pHostLaunchQueued = false;
+        if (m_btnP2PHost != nullptr)
+        {
+            m_btnP2PHost->setEnabled(true);
+        }
+        QTimer::singleShot(0, this, &KailleraNetplayDialog::onP2PHost);
+    }
+}
+
+void KailleraNetplayDialog::maybeAutoClaimP2PStaticCode()
+{
+    if (m_p2pAutoClaimAttempted)
+    {
+        return;
+    }
+
+    if (!currentP2PStaticCode().isEmpty() && !currentP2PStaticCodeOwnerToken().isEmpty())
+    {
+        return;
+    }
+
+    m_p2pAutoClaimAttempted = true;
+
+    auto* socket = new QUdpSocket(this);
+    if (!socket->bind(QHostAddress::AnyIPv4, 0, QUdpSocket::DefaultForPlatform))
+    {
+        socket->deleteLater();
+        return;
+    }
+
+    QHostAddress serverAddress;
+    if (!resolveTraversalServerAddress(serverAddress))
+    {
+        socket->deleteLater();
+        return;
+    }
+
+    auto* timeoutTimer = new QTimer(this);
+    timeoutTimer->setSingleShot(true);
+
+    m_p2pAutoClaimSocket = socket;
+    m_p2pAutoClaimTimeoutTimer = timeoutTimer;
+    m_p2pAutoClaimAwaitingAck = false;
+    m_p2pAutoClaimPendingCode.clear();
+    m_p2pAutoClaimPendingToken.clear();
+
+    connect(timeoutTimer, &QTimer::timeout, this, [this]() {
+        cancelPendingP2PAutoClaim();
+    });
+
+    connect(socket, &QUdpSocket::readyRead, this, [this, socket, serverAddress]() {
+        QByteArray response;
+        QHostAddress sender;
+        quint16 senderPort = 0;
+
+        while (socket->hasPendingDatagrams())
+        {
+            response.resize(static_cast<int>(socket->pendingDatagramSize()));
+            socket->readDatagram(response.data(), response.size(), &sender, &senderPort);
+        }
+        Q_UNUSED(sender);
+        Q_UNUSED(senderPort);
+
+        if (!response.isEmpty() && response[0] == '\0')
+        {
+            response.remove(0, 1);
+        }
+
+        const QList<QByteArray> parts = response.split('|');
+        if (parts.size() < 2 || parts[0] != kN02TraversalProtocol)
+        {
+            cancelPendingP2PAutoClaim();
+            return;
+        }
+
+        if (!m_p2pAutoClaimAwaitingAck)
+        {
+            if (parts[1] != "CLAIMOK" || parts.size() < 4)
+            {
+                cancelPendingP2PAutoClaim();
+                return;
+            }
+
+            const QString code = normalizeTraversalCode(QString::fromUtf8(parts[2]));
+            const QString token = QString::fromUtf8(parts[3]).trimmed();
+            if (code.isEmpty() || token.isEmpty())
+            {
+                cancelPendingP2PAutoClaim();
+                return;
+            }
+
+            if (!currentP2PStaticCode().isEmpty() || !currentP2PStaticCodeOwnerToken().isEmpty())
+            {
+                cancelPendingP2PAutoClaim();
+                return;
+            }
+
+            m_p2pAutoClaimPendingCode = code;
+            m_p2pAutoClaimPendingToken = token;
+            CoreSettingsSetValue(SettingsID::Kaillera_P2PStaticCode, code.toStdString());
+            CoreSettingsSetValue(SettingsID::Kaillera_P2PStaticCodeOwnerToken, token.toStdString());
+            CoreSettingsSave();
+            refreshP2PStaticCodeDisplay();
+
+            const QByteArray ack = QByteArray(kN02TraversalProtocol) + "|CLAIMACK|" + token.toUtf8();
+            if (socket->writeDatagram(ack, serverAddress, kN02TraversalPort) < 0)
+            {
+                cancelPendingP2PAutoClaim();
+                return;
+            }
+
+            m_p2pAutoClaimAwaitingAck = true;
+            if (m_p2pAutoClaimTimeoutTimer != nullptr)
+            {
+                m_p2pAutoClaimTimeoutTimer->start(2000);
+            }
+            return;
+        }
+
+        if (parts[1] == "OK")
+        {
+            cancelPendingP2PAutoClaim();
+            return;
+        }
+
+        cancelPendingP2PAutoClaim();
+    });
+
+    const QByteArray payload = QByteArray(kN02TraversalProtocol) + "|CLAIM|AUTO";
+    if (socket->writeDatagram(payload, serverAddress, kN02TraversalPort) < 0)
+    {
+        cancelPendingP2PAutoClaim();
+        return;
+    }
+
+    timeoutTimer->start(2000);
 }
 
 void KailleraNetplayDialog::onCopyP2PCode()
@@ -2280,6 +2501,15 @@ void KailleraNetplayDialog::onCopyP2PCode()
     }
 
     QApplication::clipboard()->setText(code);
+    if (m_p2pCopyAction != nullptr)
+    {
+        m_p2pCopyAction->setIcon(themedLineIcon("copy-check-line"));
+        m_p2pCopyAction->setToolTip("Copied");
+    }
+    if (m_p2pCopyFeedbackTimer != nullptr)
+    {
+        m_p2pCopyFeedbackTimer->start(1200);
+    }
 }
 
 void KailleraNetplayDialog::onStateMachineTimer()
@@ -2304,6 +2534,8 @@ void KailleraNetplayDialog::onTabChanged(int index)
 
 void KailleraNetplayDialog::onConfigureP2PCode()
 {
+    cancelPendingP2PAutoClaim();
+
     QString requested = currentP2PStaticCode();
     const QString oldCode = currentP2PStaticCode();
     const QString oldOwnerToken = currentP2PStaticCodeOwnerToken();
@@ -2504,13 +2736,26 @@ void KailleraNetplayDialog::onConfigureP2PCode()
             CoreSettingsSave();
             refreshP2PStaticCodeDisplay();
 
-            if (!oldOwnerToken.isEmpty() && oldOwnerToken != token && (!oldCode.isEmpty() && oldCode != code))
+            QString confirmError;
+            const bool confirmed = confirmTraversalClaim(code, token, confirmError);
+
+            if (confirmed && !oldOwnerToken.isEmpty() && oldOwnerToken != token && (!oldCode.isEmpty() && oldCode != code))
             {
                 releaseOldTraversalReservation(this, oldOwnerToken);
             }
 
-            QMessageBox::information(this, "Configure P2P Code",
-                "Your connect code is now " + code + ".");
+            if (confirmed)
+            {
+                QMessageBox::information(this, "Configure P2P Code",
+                    "Your connect code is now " + code + ".");
+            }
+            else
+            {
+                QMessageBox::warning(this, "Configure P2P Code",
+                    "Your connect code was saved locally as " + code +
+                    ", but the NAT server did not confirm it yet.\n" + confirmError +
+                    "\n\nThe code will be retried automatically the next time you host.");
+            }
             return;
         }
 
@@ -2969,6 +3214,18 @@ void KailleraNetplayDialog::onServerDoubleClicked(int row, int column)
 
 void KailleraNetplayDialog::onP2PHost()
 {
+    if (m_p2pAutoClaimSocket != nullptr &&
+        currentP2PStaticCode().isEmpty() &&
+        currentP2PStaticCodeOwnerToken().isEmpty())
+    {
+        m_p2pHostLaunchQueued = true;
+        if (m_btnP2PHost != nullptr)
+        {
+            m_btnP2PHost->setEnabled(false);
+        }
+        return;
+    }
+
     QByteArray usernameBytes = m_usernameEdit->text().toUtf8();
     if (usernameBytes.isEmpty()) usernameBytes = "Player";
 

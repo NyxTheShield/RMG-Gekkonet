@@ -686,6 +686,13 @@ void KailleraP2PDialog::travSendClaimAuto()
         m_travRegAttempts++;
 }
 
+void KailleraP2PDialog::travSendClaimAck()
+{
+    if (m_travToken.isEmpty()) return;
+    QByteArray msg = QByteArray(kN02TraversalProtocol) + "|CLAIMACK|" + m_travToken.toUtf8();
+    travSendToServer(msg);
+}
+
 void KailleraP2PDialog::travSendHostOpen()
 {
     if (m_travToken.isEmpty()) return;
@@ -909,6 +916,7 @@ void KailleraP2PDialog::onSsrvPacketReceived(QByteArray cmd, QByteArray saddr)
                            "Copied connect code to clipboard</span>");
 
             updateHostCodeUI();
+            travSendClaimAck();
             travSendHostOpen();
 
             return;
@@ -1324,9 +1332,9 @@ void KailleraP2PDialog::onTravTimer()
                     m_travHostIpPort.clear();
                     updateHostCodeUI();
 
-                    m_chat->append("<span style='color:green;'>" + timestamp() +
-                                   "Unable to contact NAT server, hosting by IP. "
-                                   "You may need to manually port forward.</span>");
+                    m_chat->append("<span style='color:red;'>" + timestamp() +
+                                   "Failed to get a connect code from the NAT server. "
+                                   "Hosting by IP instead. You may need to manually port forward.</span>");
                     ssrvWhatIsMyIp();
                 }
                 else

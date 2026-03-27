@@ -67,6 +67,7 @@ private:
     // NAT traversal helpers
     void travSendToServer(const QByteArray& msg);
     void travSendClaimAuto();
+    void travSendClaimAck();
     void travSendHostOpen();
     void travSendHostKeep();
     void travSendHostClose();
