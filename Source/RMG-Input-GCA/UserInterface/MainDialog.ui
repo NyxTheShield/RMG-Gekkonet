@@ -15,87 +15,99 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_5">
    <item>
-    <widget class="QGroupBox" name="deadZoneGroupBox">
-     <property name="title">
-      <string>Deadzone: 100%</string>
+    <layout class="QVBoxLayout" name="slidersLayout">
+     <property name="spacing">
+      <number>12</number>
      </property>
-     <layout class="QVBoxLayout" name="verticalLayout">
-      <item>
-       <widget class="QSlider" name="deadZoneSlider">
-        <property name="maximum">
-         <number>100</number>
-        </property>
-        <property name="orientation">
-         <enum>Qt::Orientation::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
+     <item>
+      <layout class="QHBoxLayout" name="deadZoneLayout">
+       <item>
+        <widget class="QLabel" name="deadZoneLabel">
+         <property name="text">
+          <string>Stick Deadzone: 100%</string>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>160</width>
+           <height>0</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="deadZoneSlider">
+         <property name="maximum">
+          <number>100</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="sensitivityLayout">
+       <item>
+        <widget class="QLabel" name="sensitivityLabel">
+         <property name="text">
+          <string>Stick Sensitivity: 100%</string>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>160</width>
+           <height>0</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="sensitivitySlider">
+         <property name="maximum">
+          <number>200</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="triggerTresholdLayout">
+       <item>
+        <widget class="QLabel" name="triggerTresholdLabel">
+         <property name="text">
+          <string>Trigger threshold: 100%</string>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>160</width>
+           <height>0</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="triggerTresholdSlider">
+         <property name="maximum">
+          <number>100</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
    </item>
    <item>
-    <widget class="QGroupBox" name="sensitivityGroupBox">
+    <widget class="QGroupBox" name="buttonsGroupBox">
      <property name="title">
-      <string>Sensitivity: 100%</string>
+      <string>Buttons</string>
      </property>
-     <layout class="QVBoxLayout" name="verticalLayout_2">
-      <item>
-       <widget class="QSlider" name="sensitivitySlider">
-        <property name="maximum">
-         <number>200</number>
-        </property>
-        <property name="orientation">
-         <enum>Qt::Orientation::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="triggerTresholdGroupBox">
-     <property name="title">
-      <string>Trigger threshold: 100%</string>
-     </property>
-     <layout class="QVBoxLayout" name="verticalLayout_4">
-      <item>
-       <widget class="QSlider" name="triggerTresholdSlider">
-        <property name="maximum">
-         <number>100</number>
-        </property>
-        <property name="orientation">
-         <enum>Qt::Orientation::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="cButtonTresholdGroupBox">
-     <property name="title">
-      <string>C stick threshold: 100%</string>
-     </property>
-     <layout class="QVBoxLayout" name="verticalLayout_3">
-      <item>
-       <widget class="QSlider" name="cButtonTresholdSlider">
-        <property name="maximum">
-         <number>100</number>
-        </property>
-        <property name="orientation">
-         <enum>Qt::Orientation::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="buttonMappingGroupBox">
-     <property name="title">
-      <string>Button Mapping</string>
-     </property>
-     <layout class="QGridLayout" name="mappingGridLayout">
+     <layout class="QGridLayout" name="buttonsGridLayout">
       <item row="0" column="0">
        <widget class="QLabel" name="labelA">
         <property name="text">
@@ -115,16 +127,10 @@
         <property name="text">
          <string>X</string>
         </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
        </widget>
       </item>
       <item row="0" column="3">
-       <spacer name="mappingSpacer">
+       <spacer name="buttonsSpacer">
         <property name="orientation">
          <enum>Qt::Orientation::Horizontal</enum>
         </property>
@@ -155,12 +161,6 @@
         <property name="text">
          <string>X</string>
         </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
        </widget>
       </item>
       <item row="1" column="0">
@@ -182,308 +182,323 @@
         <property name="text">
          <string>X</string>
         </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
        </widget>
       </item>
-      <item row="1" column="4">
-       <widget class="QLabel" name="labelZ">
-        <property name="text">
-         <string>Z:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="5">
-       <widget class="QPushButton" name="mapButtonZ">
-        <property name="text">
-         <string>Z</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="6">
-       <widget class="QPushButton" name="clearButtonZ">
-        <property name="text">
-         <string>X</string>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="triggersGroupBox">
+     <property name="title">
+      <string>Triggers</string>
+     </property>
+     <layout class="QGridLayout" name="triggersGridLayout">
+      <item row="0" column="0">
        <widget class="QLabel" name="labelL">
         <property name="text">
          <string>L:</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="0" column="1">
        <widget class="QPushButton" name="mapButtonL">
         <property name="text">
          <string>L Trigger</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="2">
+      <item row="0" column="2">
        <widget class="QPushButton" name="clearButtonL">
         <property name="text">
          <string>X</string>
         </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
        </widget>
       </item>
-      <item row="2" column="4">
+      <item row="0" column="3">
+       <spacer name="triggersSpacer">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item row="0" column="4">
        <widget class="QLabel" name="labelR">
         <property name="text">
          <string>R:</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="5">
+      <item row="0" column="5">
        <widget class="QPushButton" name="mapButtonR">
         <property name="text">
          <string>R Trigger</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="6">
+      <item row="0" column="6">
        <widget class="QPushButton" name="clearButtonR">
         <property name="text">
          <string>X</string>
         </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelZ">
+        <property name="text">
+         <string>Z:</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="0">
+      <item row="1" column="1">
+       <widget class="QPushButton" name="mapButtonZ">
+        <property name="text">
+         <string>Z</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QPushButton" name="clearButtonZ">
+        <property name="text">
+         <string>X</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="4">
+       <widget class="QLabel" name="labelZ2">
+        <property name="text">
+         <string>Z 2:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="5">
+       <widget class="QPushButton" name="mapButtonZ2">
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="6">
+       <widget class="QPushButton" name="clearButtonZ2">
+        <property name="text">
+         <string>X</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="dpadGroupBox">
+     <property name="title">
+      <string>D-Pad</string>
+     </property>
+     <layout class="QGridLayout" name="dpadGridLayout">
+      <item row="0" column="0">
        <widget class="QLabel" name="labelDpadUp">
         <property name="text">
-         <string>D-Up:</string>
+         <string>Up:</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="1">
+      <item row="0" column="1">
        <widget class="QPushButton" name="mapButtonDpadUp">
         <property name="text">
          <string>D-Pad Up</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="2">
+      <item row="0" column="2">
        <widget class="QPushButton" name="clearButtonDpadUp">
         <property name="text">
          <string>X</string>
         </property>
-        <property name="maximumSize">
+       </widget>
+      </item>
+      <item row="0" column="3">
+       <spacer name="dpadSpacer">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
          <size>
-          <width>30</width>
-          <height>16777215</height>
+          <width>20</width>
+          <height>20</height>
          </size>
         </property>
-       </widget>
+       </spacer>
       </item>
-      <item row="3" column="4">
+      <item row="0" column="4">
        <widget class="QLabel" name="labelDpadDown">
         <property name="text">
-         <string>D-Down:</string>
+         <string>Down:</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="5">
+      <item row="0" column="5">
        <widget class="QPushButton" name="mapButtonDpadDown">
         <property name="text">
          <string>D-Pad Down</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="6">
+      <item row="0" column="6">
        <widget class="QPushButton" name="clearButtonDpadDown">
         <property name="text">
          <string>X</string>
         </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
        </widget>
       </item>
-      <item row="4" column="0">
+      <item row="1" column="0">
        <widget class="QLabel" name="labelDpadLeft">
         <property name="text">
-         <string>D-Left:</string>
+         <string>Left:</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="1">
+      <item row="1" column="1">
        <widget class="QPushButton" name="mapButtonDpadLeft">
         <property name="text">
          <string>D-Pad Left</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="2">
+      <item row="1" column="2">
        <widget class="QPushButton" name="clearButtonDpadLeft">
         <property name="text">
          <string>X</string>
         </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
        </widget>
       </item>
-      <item row="4" column="4">
+      <item row="1" column="4">
        <widget class="QLabel" name="labelDpadRight">
         <property name="text">
-         <string>D-Right:</string>
+         <string>Right:</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="5">
+      <item row="1" column="5">
        <widget class="QPushButton" name="mapButtonDpadRight">
         <property name="text">
          <string>D-Pad Right</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="6">
+      <item row="1" column="6">
        <widget class="QPushButton" name="clearButtonDpadRight">
         <property name="text">
          <string>X</string>
         </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
        </widget>
       </item>
-      <item row="5" column="0">
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="cButtonsGroupBox">
+     <property name="title">
+      <string>C-Buttons</string>
+     </property>
+     <layout class="QGridLayout" name="cButtonsGridLayout">
+      <item row="0" column="0">
        <widget class="QLabel" name="labelCUp">
         <property name="text">
-         <string>C-Up:</string>
+         <string>Up:</string>
         </property>
        </widget>
       </item>
-      <item row="5" column="1">
+      <item row="0" column="1">
        <widget class="QPushButton" name="mapButtonCUp">
         <property name="text">
          <string>C-Stick Up</string>
         </property>
        </widget>
       </item>
-      <item row="5" column="2">
+      <item row="0" column="2">
        <widget class="QPushButton" name="clearButtonCUp">
         <property name="text">
          <string>X</string>
         </property>
-        <property name="maximumSize">
+       </widget>
+      </item>
+      <item row="0" column="3">
+       <spacer name="cButtonsSpacer">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
          <size>
-          <width>30</width>
-          <height>16777215</height>
+          <width>20</width>
+          <height>20</height>
          </size>
         </property>
-       </widget>
+       </spacer>
       </item>
-      <item row="5" column="4">
+      <item row="0" column="4">
        <widget class="QLabel" name="labelCDown">
         <property name="text">
-         <string>C-Down:</string>
+         <string>Down:</string>
         </property>
        </widget>
       </item>
-      <item row="5" column="5">
+      <item row="0" column="5">
        <widget class="QPushButton" name="mapButtonCDown">
         <property name="text">
          <string>C-Stick Down</string>
         </property>
        </widget>
       </item>
-      <item row="5" column="6">
+      <item row="0" column="6">
        <widget class="QPushButton" name="clearButtonCDown">
         <property name="text">
          <string>X</string>
         </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
        </widget>
       </item>
-      <item row="6" column="0">
+      <item row="1" column="0">
        <widget class="QLabel" name="labelCLeft">
         <property name="text">
-         <string>C-Left:</string>
+         <string>Left:</string>
         </property>
        </widget>
       </item>
-      <item row="6" column="1">
+      <item row="1" column="1">
        <widget class="QPushButton" name="mapButtonCLeft">
         <property name="text">
          <string>C-Stick Left</string>
         </property>
        </widget>
       </item>
-      <item row="6" column="2">
+      <item row="1" column="2">
        <widget class="QPushButton" name="clearButtonCLeft">
         <property name="text">
          <string>X</string>
         </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
-        </property>
        </widget>
       </item>
-      <item row="6" column="4">
+      <item row="1" column="4">
        <widget class="QLabel" name="labelCRight">
         <property name="text">
-         <string>C-Right:</string>
+         <string>Right:</string>
         </property>
        </widget>
       </item>
-      <item row="6" column="5">
+      <item row="1" column="5">
        <widget class="QPushButton" name="mapButtonCRight">
         <property name="text">
          <string>C-Stick Right</string>
         </property>
        </widget>
       </item>
-      <item row="6" column="6">
+      <item row="1" column="6">
        <widget class="QPushButton" name="clearButtonCRight">
         <property name="text">
          <string>X</string>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>30</width>
-          <height>16777215</height>
-         </size>
         </property>
        </widget>
       </item>

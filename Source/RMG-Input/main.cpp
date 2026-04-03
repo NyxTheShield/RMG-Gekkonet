@@ -110,6 +110,7 @@ struct InputProfile
     InputMapping Button_LeftShoulder;
     InputMapping Button_RightShoulder;
     InputMapping Button_ZTrigger;
+    InputMapping Button_ZTrigger2;
 
     // analog stick
     InputMapping AnalogStick_Up;
@@ -332,6 +333,7 @@ static void load_settings(void)
         LOAD_INPUT_MAPPING(Button_LeftShoulder,  Input_LeftShoulder);
         LOAD_INPUT_MAPPING(Button_RightShoulder, Input_RightShoulder);
         LOAD_INPUT_MAPPING(Button_ZTrigger,     Input_ZTrigger);
+        LOAD_INPUT_MAPPING(Button_ZTrigger2,    Input_ZTrigger2);
         LOAD_INPUT_MAPPING(AnalogStick_Up,      Input_AnalogStickUp);
         LOAD_INPUT_MAPPING(AnalogStick_Down,    Input_AnalogStickDown);
         LOAD_INPUT_MAPPING(AnalogStick_Left,    Input_AnalogStickLeft);
@@ -1282,7 +1284,8 @@ EXPORT void CALL GetKeys(int Control, BUTTONS* Keys)
     Keys->R_CBUTTON    = get_button_state(profile, &profile->Button_CButtonRight);
     Keys->L_TRIG       = get_button_state(profile, &profile->Button_LeftShoulder);
     Keys->R_TRIG       = get_button_state(profile, &profile->Button_RightShoulder);
-    Keys->Z_TRIG       = get_button_state(profile, &profile->Button_ZTrigger);
+    Keys->Z_TRIG       = get_button_state(profile, &profile->Button_ZTrigger) ||
+                         get_button_state(profile, &profile->Button_ZTrigger2);
 
     double inputX = 0, inputY = 0;
     bool useButtonMapping = false;
