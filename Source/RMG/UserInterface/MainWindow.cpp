@@ -28,6 +28,7 @@
 #include "Dialog/Kaillera/KailleraPlaybackDialog.hpp"
 #include "n02_client.h"
 #endif
+#include "Dialog/RaphnetInputDialog.hpp"
 #include "UserInterface/EventFilter.hpp"
 #include "Utilities/QtKeyToSdl3Key.hpp"
 #include "Utilities/QtMessageBox.hpp"
@@ -159,6 +160,12 @@ public:
 
 using namespace UserInterface;
 using namespace Utilities;
+
+static bool isRaphnetRawPlugin()
+{
+    std::string pluginName = CoreSettingsGetStringValue(SettingsID::Core_INPUT_Plugin);
+    return pluginName.find("raphnetraw") != std::string::npos;
+}
 
 namespace
 {
@@ -952,7 +959,7 @@ void MainWindow::checkRaphnetPluginMismatch(void)
         }
 
         // Update input settings button enabled state
-        bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input);
+        bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input) || isRaphnetRawPlugin();
         this->action_Settings_Input->setEnabled(hasInputConfig);
         this->action_Toolbar_Input->setEnabled(hasInputConfig);
     }
@@ -1353,9 +1360,9 @@ void MainWindow::updateActions(bool inEmulation, bool isPaused)
     this->action_Settings_Rsp->setEnabled(CorePluginsHasConfig(CorePluginType::Rsp));
     this->action_Settings_Rsp->setShortcut(QKeySequence(keyBinding));
     keyBinding = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::KeyBinding_InputSettings));
-    this->action_Settings_Input->setEnabled(CorePluginsHasConfig(CorePluginType::Input));
+    this->action_Settings_Input->setEnabled(CorePluginsHasConfig(CorePluginType::Input) || isRaphnetRawPlugin());
     this->action_Settings_Input->setShortcut(QKeySequence(keyBinding));
-    this->action_Toolbar_Input->setEnabled(CorePluginsHasConfig(CorePluginType::Input));
+    this->action_Toolbar_Input->setEnabled(CorePluginsHasConfig(CorePluginType::Input) || isRaphnetRawPlugin());
     keyBinding = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::KeyBinding_Settings));
     this->action_Settings_Settings->setShortcut(QKeySequence(keyBinding));
 
@@ -2478,8 +2485,18 @@ void MainWindow::on_Action_Settings_Rsp(void)
     CorePluginsOpenConfig(CorePluginType::Rsp, this);
 }
 
+
 void MainWindow::on_Action_Settings_Input(void)
 {
+    // If raphnetraw is the active input plugin, open the input test dialog
+    // (only when no ROM is running to avoid interfering with game input)
+    if (isRaphnetRawPlugin() && !CoreIsEmulationRunning())
+    {
+        UserInterface::RaphnetInputDialog dialog(this);
+        dialog.exec();
+        return;
+    }
+
     // Clear the plugin switch flag before opening config
     CoreSettingsSetValue(SettingsID::Internal_InputPluginSwitchRequested, false);
 
@@ -2495,7 +2512,7 @@ void MainWindow::on_Action_Settings_Input(void)
         }
 
         // Update input settings button enabled state
-        bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input);
+        bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input) || isRaphnetRawPlugin();
         this->action_Settings_Input->setEnabled(hasInputConfig);
         this->action_Toolbar_Input->setEnabled(hasInputConfig);
     }
