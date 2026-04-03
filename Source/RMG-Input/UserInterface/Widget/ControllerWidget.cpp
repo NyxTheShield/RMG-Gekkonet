@@ -28,6 +28,7 @@
 #include <QPixmap>
 
 #include <SDL3/SDL.h>
+#include <cmath>
 
 using namespace UserInterface::Layout;
 using namespace UserInterface::Widget;
@@ -428,6 +429,8 @@ void ControllerWidget::setPluggedIn(bool value)
         this->analogStickLeftButton, this->analogStickLeftAddButton, this->analogStickLeftRemoveButton,
         this->analogStickRightButton, this->analogStickRightAddButton, this->analogStickRightRemoveButton,
         this->analogStickRangeSlider, this->realN64RangeCheckBox,
+        // axis readout
+        this->axisReadoutGroupBox,
         // cbuttons
         this->cButtonsGroupBox,
         this->cbuttonUpButton, this->cbuttonUpAddButton, this->cbuttonUpRemoveButton,
@@ -1316,7 +1319,7 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
                                     100 :
                                     -100
                             );
-                            this->controllerImageWidget->SetYAxisState(sdlButtonPressed ? value : 0);
+                            // axis state updated by updateAxisReadout()
                         } break;
 
                         case InputAxisDirection::Left:
@@ -1327,7 +1330,7 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
                                     100 :
                                     -100
                             );
-                            this->controllerImageWidget->SetXAxisState(sdlButtonPressed ? value : 0);
+                            // axis state updated by updateAxisReadout()
                         } break;
 
                         default:
@@ -1439,11 +1442,11 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
 
                                 if (!sdlHatCentered && sdlHatDirection == direction)
                                 {
-                                    this->controllerImageWidget->SetYAxisState(value);
+                                    // axis state updated by updateAxisReadout()
                                 }
                                 else
                                 {
-                                    this->controllerImageWidget->SetYAxisState(0);
+                                    // axis state updated by updateAxisReadout()
                                 }
                             } break;
 
@@ -1458,11 +1461,11 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
 
                                 if (!sdlHatCentered && sdlHatDirection == direction)
                                 {
-                                    this->controllerImageWidget->SetXAxisState(value);
+                                    // axis state updated by updateAxisReadout()
                                 }
                                 else
                                 {
-                                    this->controllerImageWidget->SetXAxisState(0);
+                                    // axis state updated by updateAxisReadout()
                                 }
                             } break;
 
@@ -1580,23 +1583,7 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
                 {
                     const int value = -(static_cast<double>(sdlAxisValue) / SDL_AXIS_PEAK * 100);
 
-                    switch (joystick.direction)
-                    {
-                        case InputAxisDirection::Up:
-                        case InputAxisDirection::Down:
-                        {
-                            this->controllerImageWidget->SetYAxisState(value);
-                        } break;
-
-                        case InputAxisDirection::Left:
-                        case InputAxisDirection::Right:
-                        {
-                            this->controllerImageWidget->SetXAxisState(value);
-                        } break;
-
-                        default:
-                            break;
-                    }
+                    // axis state updated by updateAxisReadout()
                 }
             }
         } break;
@@ -1613,6 +1600,9 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
 
             const SDL_Scancode sdlButton = static_cast<SDL_Scancode>(event->key.scancode);
             const bool sdlButtonPressed = (event->type == SDL_EVENT_KEY_DOWN);
+
+            // Track keyboard state for axis readout
+            this->m_KeyboardState[sdlButton] = sdlButtonPressed;
 
             // handle button widget
             if (this->currentButton != nullptr)
@@ -1665,7 +1655,7 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
                                     100 :
                                     -100
                             );
-                            this->controllerImageWidget->SetYAxisState(sdlButtonPressed ? value : 0);
+                            // axis state updated by updateAxisReadout()
                         } break;
 
                         case InputAxisDirection::Left:
@@ -1676,7 +1666,7 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
                                     100 :
                                     -100
                             );
-                            this->controllerImageWidget->SetXAxisState(sdlButtonPressed ? value : 0);
+                            // axis state updated by updateAxisReadout()
                         } break;
 
                         default:
@@ -1696,6 +1686,117 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
 void ControllerWidget::on_MainDialog_SdlEventPollFinished()
 {
     this->controllerImageWidget->UpdateImage();
+    this->updateAxisReadout();
+}
+
+// Helper: read the current state of a mapped input (button/axis/keyboard)
+static double readMappedAxisInput(MappingButton* button, SDL_Joystick* joystick, SDL_Gamepad* gamepad, int direction, const std::unordered_map<int, bool>& keyState)
+{
+    std::vector<int> types = button->GetInputType();
+    std::vector<int> data = button->GetInputData();
+    std::vector<int> extra = button->GetExtraInputData();
+    bool buttonState = false;
+    double axisState = 0.0;
+
+    for (size_t i = 0; i < types.size(); i++)
+    {
+        switch (static_cast<InputType>(types[i]))
+        {
+            case InputType::GamepadButton:
+                if (gamepad)
+                    buttonState |= SDL_GetGamepadButton(gamepad, static_cast<SDL_GamepadButton>(data[i]));
+                break;
+            case InputType::GamepadAxis:
+            {
+                if (!gamepad) break;
+                double val = SDL_GetGamepadAxis(gamepad, static_cast<SDL_GamepadAxis>(data[i]));
+                if (val < -32767.0) val = -32767.0;
+                if (extra[i] ? val > 0 : val < 0)
+                {
+                    val = std::abs(val / SDL_AXIS_PEAK) * direction;
+                    axisState = val;
+                }
+            } break;
+            case InputType::JoystickButton:
+                if (joystick)
+                    buttonState |= SDL_GetJoystickButton(joystick, data[i]);
+                break;
+            case InputType::JoystickHat:
+                if (joystick)
+                    buttonState |= (SDL_GetJoystickHat(joystick, data[i]) & extra[i]) ? true : false;
+                break;
+            case InputType::JoystickAxis:
+            {
+                if (!joystick) break;
+                double val = SDL_GetJoystickAxis(joystick, data[i]);
+                if (val < -32767.0) val = -32767.0;
+                if (extra[i] ? val > 0 : val < 0)
+                {
+                    val = std::abs(val / SDL_AXIS_PEAK) * direction;
+                    axisState = val;
+                }
+            } break;
+            case InputType::Keyboard:
+            {
+                auto it = keyState.find(data[i]);
+                if (it != keyState.end() && it->second)
+                    buttonState = true;
+            } break;
+            default:
+                break;
+        }
+    }
+
+    if (buttonState)
+        return direction;
+    return axisState;
+}
+
+void ControllerWidget::updateAxisReadout()
+{
+    // Read mapped analog stick inputs (works with any input type: keyboard, gamepad, joystick)
+    double inputY = readMappedAxisInput(this->analogStickUpButton, this->currentJoystick, this->currentGamepad, 1, this->m_KeyboardState);
+    double inputYDown = readMappedAxisInput(this->analogStickDownButton, this->currentJoystick, this->currentGamepad, -1, this->m_KeyboardState);
+    if (inputY != 0.0 && inputYDown != 0.0)
+        inputY = 0.0;
+    else if (inputYDown != 0.0)
+        inputY = inputYDown;
+
+    double inputX = readMappedAxisInput(this->analogStickRightButton, this->currentJoystick, this->currentGamepad, 1, this->m_KeyboardState);
+    double inputXLeft = readMappedAxisInput(this->analogStickLeftButton, this->currentJoystick, this->currentGamepad, -1, this->m_KeyboardState);
+    if (inputX != 0.0 && inputXLeft != 0.0)
+        inputX = 0.0;
+    else if (inputXLeft != 0.0)
+        inputX = inputXLeft;
+
+    // Apply deadzone and range (same formula as main.cpp)
+    double deadzone = static_cast<double>(this->deadZoneSlider->value()) / 100.0;
+    double range = static_cast<double>(this->analogStickRangeSlider->value());
+    double n64Max = 127.0 * (range / 100.0);
+
+    auto scaleAxis = [](double input, double dz, double max) -> int {
+        double absInput = std::abs(input);
+        if (absInput <= dz) return 0;
+        double scaled = (absInput - dz) / (1.0 - dz) * max;
+        int result = static_cast<int>(std::min(scaled, max));
+        return (input >= 0) ? result : -result;
+    };
+
+    int xVal = scaleAxis(inputX, deadzone, n64Max);
+    int yVal = scaleAxis(inputY, deadzone, n64Max);
+
+    this->axisReadoutXValue->setText(QString::number(xVal));
+    this->axisReadoutYValue->setText(QString::number(yVal));
+    this->axisReadoutXBar->setValue(xVal);
+    this->axisReadoutYBar->setValue(yVal);
+
+    // Update the controller image to match the actual N64 output values
+    // Convert from N64 range (max ~127) to image range (-100 to 100)
+    int imgX = (n64Max > 0) ? static_cast<int>(xVal * 100.0 / 127.0) : 0;
+    int imgY = (n64Max > 0) ? static_cast<int>(yVal * 100.0 / 127.0) : 0;
+    // Image convention: positive = Left/Up (viewbox shift inverts rendering)
+    this->controllerImageWidget->SetXAxisState(-imgX);
+    this->controllerImageWidget->SetYAxisState(imgY);
 }
 
 bool ControllerWidget::IsPluggedIn()
