@@ -69,6 +69,7 @@ bool Utilities::InputProfileDB::Load(void)
         { N64ControllerButton::LeftShoulder, InputAxisDirection::Invalid, "LeftTrigger_", },
         { N64ControllerButton::RightShoulder, InputAxisDirection::Invalid, "RightTrigger_" },
         { N64ControllerButton::ZTrigger, InputAxisDirection::Invalid, "ZTrigger_" },
+        { N64ControllerButton::ZTrigger2, InputAxisDirection::Invalid, "ZTrigger2_" },
         { N64ControllerButton::Invalid, InputAxisDirection::Up, "AnalogStickUp_" },
     	{ N64ControllerButton::Invalid, InputAxisDirection::Down, "AnalogStickDown_" },
     	{ N64ControllerButton::Invalid, InputAxisDirection::Left, "AnalogStickLeft_" },

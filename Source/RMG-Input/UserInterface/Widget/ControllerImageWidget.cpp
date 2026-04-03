@@ -134,7 +134,8 @@ void ControllerImageWidget::paintEvent(QPaintEvent *event)
         { N64ControllerButton::CButtonRight, ":Resource/Controller_Pressed_CButtonRight.svg" },
         { N64ControllerButton::LeftShoulder, ":Resource/Controller_Pressed_LeftShoulder.svg" },
         { N64ControllerButton::RightShoulder, ":Resource/Controller_Pressed_RightShoulder.svg" },
-        { N64ControllerButton::ZTrigger, ":Resource/Controller_Pressed_ZTrigger.svg" }
+        { N64ControllerButton::ZTrigger, ":Resource/Controller_Pressed_ZTrigger.svg" },
+        { N64ControllerButton::ZTrigger2, ":Resource/Controller_Pressed_ZTrigger.svg" }
     };
 
     static const QString baseImageUri = ":Resource/Controller_NoAnalogStick.svg";

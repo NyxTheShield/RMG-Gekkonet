@@ -46,7 +46,6 @@ private:
     OptionsDialogSettings optionsDialogSettings;
 
     MappingButton* currentButton = nullptr;
-    bool addMappingToButton      = false;
 
     QList<QString> profiles;
     QList<QString> removedProfiles;

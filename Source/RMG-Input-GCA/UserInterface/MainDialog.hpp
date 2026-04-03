@@ -37,7 +37,6 @@ private slots:
     void on_deadZoneSlider_valueChanged(int value);
     void on_sensitivitySlider_valueChanged(int value);
     void on_triggerTresholdSlider_valueChanged(int value);
-    void on_cButtonTresholdSlider_valueChanged(int value);
 
     void onMappingButtonClicked(int index);
     void onClearButtonClicked(int index);

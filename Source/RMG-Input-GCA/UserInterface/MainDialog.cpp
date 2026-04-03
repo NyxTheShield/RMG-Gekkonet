@@ -30,6 +30,7 @@ MainDialog::MainDialog(QWidget* parent) : QDialog(parent)
         SettingsID::GCAInput_Map_B,
         SettingsID::GCAInput_Map_Start,
         SettingsID::GCAInput_Map_Z,
+        SettingsID::GCAInput_Map_Z2,
         SettingsID::GCAInput_Map_L,
         SettingsID::GCAInput_Map_R,
         SettingsID::GCAInput_Map_DpadUp,
@@ -48,6 +49,7 @@ MainDialog::MainDialog(QWidget* parent) : QDialog(parent)
         this->mapButtonB,
         this->mapButtonStart,
         this->mapButtonZ,
+        this->mapButtonZ2,
         this->mapButtonL,
         this->mapButtonR,
         this->mapButtonDpadUp,
@@ -66,6 +68,7 @@ MainDialog::MainDialog(QWidget* parent) : QDialog(parent)
         this->clearButtonB,
         this->clearButtonStart,
         this->clearButtonZ,
+        this->clearButtonZ2,
         this->clearButtonL,
         this->clearButtonR,
         this->clearButtonDpadUp,
@@ -88,8 +91,12 @@ MainDialog::MainDialog(QWidget* parent) : QDialog(parent)
         connect(m_ClearButtons[i], &QPushButton::clicked, this, [this, i]() {
             onClearButtonClicked(i);
         });
+        int mapHeight = m_MappingButtons[i]->sizeHint().height();
         m_ClearButtons[i]->setText("");
         m_ClearButtons[i]->setIcon(clearIcon);
+        m_ClearButtons[i]->setIconSize(QSize(20, 16));
+        m_ClearButtons[i]->setFixedSize(QSize(mapHeight, mapHeight));
+        m_ClearButtons[i]->setStyleSheet(QStringLiteral("padding: 0px;"));
     }
 
     // Setup poll timer
@@ -100,7 +107,6 @@ MainDialog::MainDialog(QWidget* parent) : QDialog(parent)
     this->deadZoneSlider->setValue(CoreSettingsGetIntValue(SettingsID::GCAInput_Deadzone));
     this->sensitivitySlider->setValue(CoreSettingsGetIntValue(SettingsID::GCAInput_Sensitivity));
     this->triggerTresholdSlider->setValue(CoreSettingsGetIntValue(SettingsID::GCAInput_TriggerTreshold));
-    this->cButtonTresholdSlider->setValue(CoreSettingsGetIntValue(SettingsID::GCAInput_CButtonTreshold));
     this->port1CheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::GCAInput_Port1Enabled));
     this->port2CheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::GCAInput_Port2Enabled));
     this->port3CheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::GCAInput_Port3Enabled));
@@ -234,7 +240,7 @@ void MainDialog::onPollTimerTimeout(void)
     GameCubeAdapterControllerState curr = GCA_GetControllerState(0);
 
     double triggerThreshold = static_cast<double>(this->triggerTresholdSlider->value()) / 100.0;
-    double cStickThreshold = static_cast<double>(this->cButtonTresholdSlider->value()) / 100.0;
+    double cStickThreshold = static_cast<double>(CoreSettingsGetIntValue(SettingsID::GCAInput_CButtonTreshold)) / 100.0;
 
     GCInput detected = DetectGCInput(m_PrevState, curr, triggerThreshold, cStickThreshold);
 
@@ -265,7 +271,6 @@ void MainDialog::on_buttonBox_clicked(QAbstractButton* button)
         CoreSettingsSetValue(SettingsID::GCAInput_Deadzone, this->deadZoneSlider->value());
         CoreSettingsSetValue(SettingsID::GCAInput_Sensitivity, this->sensitivitySlider->value());
         CoreSettingsSetValue(SettingsID::GCAInput_TriggerTreshold, this->triggerTresholdSlider->value());
-        CoreSettingsSetValue(SettingsID::GCAInput_CButtonTreshold, this->cButtonTresholdSlider->value());
         CoreSettingsSetValue(SettingsID::GCAInput_Port1Enabled, this->port1CheckBox->isChecked());
         CoreSettingsSetValue(SettingsID::GCAInput_Port2Enabled, this->port2CheckBox->isChecked());
         CoreSettingsSetValue(SettingsID::GCAInput_Port3Enabled, this->port3CheckBox->isChecked());
@@ -278,7 +283,6 @@ void MainDialog::on_buttonBox_clicked(QAbstractButton* button)
         this->deadZoneSlider->setValue(CoreSettingsGetDefaultIntValue(SettingsID::GCAInput_Deadzone));
         this->sensitivitySlider->setValue(CoreSettingsGetDefaultIntValue(SettingsID::GCAInput_Sensitivity));
         this->triggerTresholdSlider->setValue(CoreSettingsGetDefaultIntValue(SettingsID::GCAInput_TriggerTreshold));
-        this->cButtonTresholdSlider->setValue(CoreSettingsGetDefaultIntValue(SettingsID::GCAInput_CButtonTreshold));
         this->port1CheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::GCAInput_Port1Enabled));
         this->port2CheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::GCAInput_Port2Enabled));
         this->port3CheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::GCAInput_Port3Enabled));
@@ -290,42 +294,17 @@ void MainDialog::on_buttonBox_clicked(QAbstractButton* button)
 
 void MainDialog::on_deadZoneSlider_valueChanged(int value)
 {
-    QString title;
-    title = "Deadzone: ";
-    title += QString::number(value);
-    title += "%";
-
-    this->deadZoneGroupBox->setTitle(title);
+    this->deadZoneLabel->setText("Stick Deadzone: " + QString::number(value) + "%");
 }
 
 void MainDialog::on_sensitivitySlider_valueChanged(int value)
 {
-    QString title;
-    title = "Sensitivity: ";
-    title += QString::number(value);
-    title += "%";
-
-    this->sensitivityGroupBox->setTitle(title);
+    this->sensitivityLabel->setText("Stick Sensitivity: " + QString::number(value) + "%");
 }
 
 void MainDialog::on_triggerTresholdSlider_valueChanged(int value)
 {
-    QString title;
-    title = "Trigger threshold: ";
-    title += QString::number(value);
-    title += "%";
-
-    this->triggerTresholdGroupBox->setTitle(title);
-}
-
-void MainDialog::on_cButtonTresholdSlider_valueChanged(int value)
-{
-    QString title;
-    title = "C stick threshold: ";
-    title += QString::number(value);
-    title += "%";
-
-    this->cButtonTresholdGroupBox->setTitle(title);
+    this->triggerTresholdLabel->setText("Trigger threshold: " + QString::number(value) + "%");
 }
 
 void MainDialog::onAxisReadoutTimer()

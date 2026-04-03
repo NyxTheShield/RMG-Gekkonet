@@ -903,6 +903,41 @@
           </layout>
          </item>
          <item>
+          <layout class="QHBoxLayout" name="horizontalLayout_ZTrigger2">
+           <property name="spacing">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="label_ZTrigger2">
+             <property name="text">
+              <string>Z-Trigger 2: </string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="MappingButton" name="zTrigger2Button">
+             <property name="text">
+              <string/>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="AddMappingButton" name="zTrigger2AddButton">
+             <property name="text">
+              <string>+</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="RemoveMappingButton" name="zTrigger2RemoveButton">
+             <property name="text">
+              <string>-</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
           <spacer name="horizontalSpacer_2">
            <property name="orientation">
             <enum>Qt::Orientation::Horizontal</enum>
