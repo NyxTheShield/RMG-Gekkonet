@@ -79,7 +79,7 @@ private:
 
     void loadServerList();
     void saveServerList();
-    void refreshServerListDisplay();
+    void refreshServerListDisplay(bool forcePingResort = false);
     void fetchLiveServerList();
     void schedulePingAllServers();
     void pingAllServers();

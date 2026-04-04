@@ -78,6 +78,57 @@ namespace {
 
 static constexpr int kMaxTraversalDigits = 3;
 
+int parseStoredPingValue(const QString& storedPingText, const QString& storedPingValueText)
+{
+    bool ok = false;
+    const int storedPingValue = storedPingValueText.trimmed().toInt(&ok);
+    if (ok)
+    {
+        return storedPingValue;
+    }
+
+    const QString pingText = storedPingText.trimmed();
+    if (pingText == "...")
+    {
+        return 999998;
+    }
+    if (pingText.compare("timeout", Qt::CaseInsensitive) == 0)
+    {
+        return 999999;
+    }
+    if (pingText.endsWith("ms", Qt::CaseInsensitive))
+    {
+        QString msText = pingText;
+        msText.chop(2);
+        const int pingMs = msText.toInt(&ok);
+        if (ok)
+        {
+            return pingMs;
+        }
+    }
+
+    return 999999;
+}
+
+QString normalizedStoredPingText(const QString& storedPingText, int pingValue)
+{
+    const QString pingText = storedPingText.trimmed();
+    if (!pingText.isEmpty())
+    {
+        return pingText;
+    }
+    if (pingValue == 999998)
+    {
+        return "...";
+    }
+    if (pingValue >= 0 && pingValue < 999998)
+    {
+        return QString::number(pingValue) + "ms";
+    }
+
+    return "-";
+}
+
 int compareNullableInts(int left, int right)
 {
     if (left == right)
@@ -1420,7 +1471,7 @@ QWidget* KailleraNetplayDialog::createServerTab()
         m_serverSortOrder = order;
         m_serverTable->horizontalHeader()->setSortIndicator(section, order);
 
-        refreshServerListDisplay();
+        refreshServerListDisplay(true);
         if (!m_pingAllInProgress)
         {
             cacheVisibleLiveServerOrder();
@@ -1780,16 +1831,25 @@ void KailleraNetplayDialog::loadServerList()
         CoreSettingsGetStringListValue(SettingsID::Kaillera_ServerListHosts);
     const std::vector<std::string> favoriteCountries =
         CoreSettingsGetStringListValue(SettingsID::Kaillera_ServerListCountries);
+    const std::vector<std::string> favoritePings =
+        CoreSettingsGetStringListValue(SettingsID::Kaillera_ServerListPings);
+    const std::vector<std::string> favoritePingValues =
+        CoreSettingsGetStringListValue(SettingsID::Kaillera_ServerListPingValues);
     for (size_t i = 0; i < favoriteNames.size() && i < favoriteHosts.size(); ++i)
     {
+        const QString storedPingText =
+            (i < favoritePings.size()) ? QString::fromStdString(favoritePings[i]) : QString();
+        const QString storedPingValueText =
+            (i < favoritePingValues.size()) ? QString::fromStdString(favoritePingValues[i]) : QString();
+        const int storedPingValue = parseStoredPingValue(storedPingText, storedPingValueText);
         m_favoriteServers.append({
             QString::fromStdString(favoriteNames[i]),
             QString::fromStdString(favoriteHosts[i]),
             (i < favoriteCountries.size()) ? QString::fromStdString(favoriteCountries[i]) : QString(),
             "-",
             -1,
-            "-",
-            999999
+            normalizedStoredPingText(storedPingText, storedPingValue),
+            storedPingValue
         });
     }
 
@@ -1799,23 +1859,51 @@ void KailleraNetplayDialog::loadServerList()
         CoreSettingsGetStringListValue(SettingsID::Kaillera_LiveServerCacheHosts);
     const std::vector<std::string> cachedCountries =
         CoreSettingsGetStringListValue(SettingsID::Kaillera_LiveServerCacheCountries);
+    const std::vector<std::string> cachedPings =
+        CoreSettingsGetStringListValue(SettingsID::Kaillera_LiveServerCachePings);
+    const std::vector<std::string> cachedPingValues =
+        CoreSettingsGetStringListValue(SettingsID::Kaillera_LiveServerCachePingValues);
     for (size_t i = 0; i < cachedNames.size() && i < cachedHosts.size(); ++i)
     {
         const QString host = QString::fromStdString(cachedHosts[i]);
-        if (host.isEmpty() || favoriteServerIndexByHost(host) >= 0)
+        if (host.isEmpty())
         {
             continue;
         }
 
+        const QString storedPingText =
+            (i < cachedPings.size()) ? QString::fromStdString(cachedPings[i]) : QString();
+        const QString storedPingValueText =
+            (i < cachedPingValues.size()) ? QString::fromStdString(cachedPingValues[i]) : QString();
+        const int storedPingValue = parseStoredPingValue(storedPingText, storedPingValueText);
         m_cachedLiveServers.append({
             QString::fromStdString(cachedNames[i]),
             host,
             (i < cachedCountries.size()) ? QString::fromStdString(cachedCountries[i]) : QString(),
             "-",
             -1,
-            "-",
-            999999
+            normalizedStoredPingText(storedPingText, storedPingValue),
+            storedPingValue
         });
+    }
+
+    for (auto& favoriteServer : m_favoriteServers)
+    {
+        const int cachedIndex = cachedServerIndexByHost(favoriteServer.host);
+        if (cachedIndex < 0)
+        {
+            continue;
+        }
+
+        if (favoriteServer.country.isEmpty())
+        {
+            favoriteServer.country = m_cachedLiveServers[cachedIndex].country;
+        }
+        if (favoriteServer.ping == "-")
+        {
+            favoriteServer.ping = m_cachedLiveServers[cachedIndex].ping;
+            favoriteServer.pingValue = m_cachedLiveServers[cachedIndex].pingValue;
+        }
     }
 
     refreshServerListDisplay();
@@ -1826,39 +1914,55 @@ void KailleraNetplayDialog::saveServerList()
     std::vector<std::string> favoriteNames;
     std::vector<std::string> favoriteHosts;
     std::vector<std::string> favoriteCountries;
+    std::vector<std::string> favoritePings;
+    std::vector<std::string> favoritePingValues;
     favoriteNames.reserve(m_favoriteServers.size());
     favoriteHosts.reserve(m_favoriteServers.size());
     favoriteCountries.reserve(m_favoriteServers.size());
+    favoritePings.reserve(m_favoriteServers.size());
+    favoritePingValues.reserve(m_favoriteServers.size());
     for (const auto& server : m_favoriteServers)
     {
         favoriteNames.push_back(server.name.toStdString());
         favoriteHosts.push_back(server.host.toStdString());
         favoriteCountries.push_back(server.country.toStdString());
+        favoritePings.push_back(server.ping.toStdString());
+        favoritePingValues.push_back(QString::number(server.pingValue).toStdString());
     }
 
     std::vector<std::string> cachedNames;
     std::vector<std::string> cachedHosts;
     std::vector<std::string> cachedCountries;
+    std::vector<std::string> cachedPings;
+    std::vector<std::string> cachedPingValues;
     cachedNames.reserve(m_cachedLiveServers.size());
     cachedHosts.reserve(m_cachedLiveServers.size());
     cachedCountries.reserve(m_cachedLiveServers.size());
+    cachedPings.reserve(m_cachedLiveServers.size());
+    cachedPingValues.reserve(m_cachedLiveServers.size());
     for (const auto& server : m_cachedLiveServers)
     {
         cachedNames.push_back(server.name.toStdString());
         cachedHosts.push_back(server.host.toStdString());
         cachedCountries.push_back(server.country.toStdString());
+        cachedPings.push_back(server.ping.toStdString());
+        cachedPingValues.push_back(QString::number(server.pingValue).toStdString());
     }
 
     CoreSettingsSetValue(SettingsID::Kaillera_ServerListNames, favoriteNames);
     CoreSettingsSetValue(SettingsID::Kaillera_ServerListHosts, favoriteHosts);
     CoreSettingsSetValue(SettingsID::Kaillera_ServerListCountries, favoriteCountries);
+    CoreSettingsSetValue(SettingsID::Kaillera_ServerListPings, favoritePings);
+    CoreSettingsSetValue(SettingsID::Kaillera_ServerListPingValues, favoritePingValues);
     CoreSettingsSetValue(SettingsID::Kaillera_LiveServerCacheNames, cachedNames);
     CoreSettingsSetValue(SettingsID::Kaillera_LiveServerCacheHosts, cachedHosts);
     CoreSettingsSetValue(SettingsID::Kaillera_LiveServerCacheCountries, cachedCountries);
+    CoreSettingsSetValue(SettingsID::Kaillera_LiveServerCachePings, cachedPings);
+    CoreSettingsSetValue(SettingsID::Kaillera_LiveServerCachePingValues, cachedPingValues);
     CoreSettingsSave();
 }
 
-void KailleraNetplayDialog::refreshServerListDisplay()
+void KailleraNetplayDialog::refreshServerListDisplay(bool forcePingResort)
 {
     QString selectedHost;
     const int currentRow = m_serverTable->currentRow();
@@ -1886,7 +1990,8 @@ void KailleraNetplayDialog::refreshServerListDisplay()
         }
     }
 
-    const bool deferPingResort = (m_pingAllInProgress && m_serverSortColumn == 4);
+    const bool deferPingResort =
+        (m_pingAllInProgress && m_serverSortColumn == 4 && !forcePingResort);
     if (!deferPingResort && m_serverSortColumn != 0)
     {
         std::stable_sort(nonFavorites.begin(), nonFavorites.end(),
@@ -2099,8 +2204,6 @@ void KailleraNetplayDialog::startNextServerPing()
     }
 
     m_activePingHost = m_pendingPingHosts.takeFirst();
-    updateServerPing(m_activePingHost, -2);
-
     QByteArray ipBytes;
     int port = 27888;
     const int colonIdx = m_activePingHost.lastIndexOf(':');
