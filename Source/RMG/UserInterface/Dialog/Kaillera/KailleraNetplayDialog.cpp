@@ -1048,6 +1048,10 @@ static QString buildLauncherStyleSheet(const QString& theme)
         "  border-top: 1px solid palette(mid);"
         "  border-left: 1px solid palette(mid);"
         "}"
+        "QTableWidget#KailleraSurface[launcherWaitingGamesTable=\"true\"] {"
+        "  border: 1px solid palette(mid);"
+        "  background-color: palette(base);"
+        "}"
         "QTableWidget#KailleraSurface[launcherP2PTable=\"true\"] {"
         "  border: 1px solid palette(mid);"
         "}");
@@ -1077,7 +1081,7 @@ static QString buildLauncherStyleSheet(const QString& theme)
             "QTabWidget#KailleraLauncherTabs QTabBar::tab:selected {"
             "  background-color: palette(base);"
             "  border-bottom: none;"
-            "  font-weight: 600;"
+            "  font-weight: 500;"
             "}"
             "QTabWidget#KailleraLauncherTabs QTabBar::tab:!selected {"
             "  background-color: %4;"
@@ -1164,13 +1168,18 @@ static QString buildLauncherStyleSheet(const QString& theme)
             "  border: 1px solid palette(mid);"
             "  border-radius: %1;"
             "  padding: 4px 12px;"
-            "  background-color: palette(button);"
+            "  background-color: palette(window);"
+            "  font-weight: 600;"
             "}"
             "QPushButton#KailleraSecondaryButton:hover {"
+            "  border-color: palette(dark);"
             "  background-color: palette(light);"
             "}"
             "QPushButton#KailleraSecondaryButton:pressed {"
-            "  background-color: palette(midlight);"
+            "  border-color: palette(shadow);"
+            "  background-color: palette(mid);"
+            "  padding-top: 5px;"
+            "  padding-bottom: 3px;"
             "}"
             "QPushButton#KailleraP2PIconButton {"
             "  border: 1px solid palette(mid);"
@@ -3192,7 +3201,7 @@ void KailleraNetplayDialog::onWaitingGamesReply(QNetworkReply* reply)
 
     auto* wgTable = new QTableWidget(0, 5, wgDialog);
     wgTable->setObjectName("KailleraSurface");
-    wgTable->setProperty("launcherP2PTable", true);
+    wgTable->setProperty("launcherWaitingGamesTable", true);
     wgTable->setHorizontalHeaderLabels({"Game", "Emulator", "User", "Server", "IP"});
     wgTable->horizontalHeader()->setStretchLastSection(true);
     wgTable->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -3200,6 +3209,7 @@ void KailleraNetplayDialog::onWaitingGamesReply(QNetworkReply* reply)
     wgTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     wgTable->setSortingEnabled(true);
     wgTable->horizontalHeader()->setMinimumSectionSize(16);
+    wgTable->verticalHeader()->setVisible(false);
     wgTable->setShowGrid(false);
     applyNoAccentStyle(wgTable);
     installHeaderDoubleClickSortToggle(wgTable);
