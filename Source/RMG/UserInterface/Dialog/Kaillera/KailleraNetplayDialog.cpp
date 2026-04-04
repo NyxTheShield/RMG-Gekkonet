@@ -3181,10 +3181,18 @@ void KailleraNetplayDialog::onWaitingGamesReply(QNetworkReply* reply)
     wgDialog->setWindowTitle("Waiting Games");
     wgDialog->setMinimumSize(600, 400);
     wgDialog->resize(700, 450);
+    const QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    if (theme == "Modern")
+    {
+        wgDialog->setObjectName("KailleraLauncherDialog");
+        wgDialog->setStyleSheet(buildLauncherStyleSheet(theme));
+    }
 
     auto* wgLayout = new QVBoxLayout(wgDialog);
 
     auto* wgTable = new QTableWidget(0, 5, wgDialog);
+    wgTable->setObjectName("KailleraSurface");
+    wgTable->setProperty("launcherP2PTable", true);
     wgTable->setHorizontalHeaderLabels({"Game", "Emulator", "User", "Server", "IP"});
     wgTable->horizontalHeader()->setStretchLastSection(true);
     wgTable->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -3192,6 +3200,7 @@ void KailleraNetplayDialog::onWaitingGamesReply(QNetworkReply* reply)
     wgTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     wgTable->setSortingEnabled(true);
     wgTable->horizontalHeader()->setMinimumSectionSize(16);
+    wgTable->setShowGrid(false);
     applyNoAccentStyle(wgTable);
     installHeaderDoubleClickSortToggle(wgTable);
     wgLayout->addWidget(wgTable);
@@ -3199,6 +3208,13 @@ void KailleraNetplayDialog::onWaitingGamesReply(QNetworkReply* reply)
     auto* wgBtnLayout = new QHBoxLayout();
     auto* btnAddToList = new QPushButton("Favorite Server", wgDialog);
     auto* btnWgClose = new QPushButton("Close", wgDialog);
+    if (theme == "Modern")
+    {
+        btnAddToList->setObjectName("KailleraSecondaryButton");
+        btnWgClose->setObjectName("KailleraSecondaryButton");
+        configureLauncherButtonMetrics(btnAddToList);
+        configureLauncherButtonMetrics(btnWgClose);
+    }
     wgBtnLayout->addWidget(btnAddToList);
     wgBtnLayout->addStretch();
     wgBtnLayout->addWidget(btnWgClose);

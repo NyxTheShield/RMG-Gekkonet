@@ -38,6 +38,7 @@
 #include <QColor>
 #include <QEvent>
 #include <QIcon>
+#include <QToolButton>
 #include <QListWidgetItem>
 #include <QMouseEvent>
 #include <windows.h>
@@ -132,16 +133,16 @@ void configureServerFabMetrics(QPushButton* button)
     button->setFixedSize(46, 46);
 }
 
-void configureServerButtonMetrics(QPushButton* button)
+void configureServerButtonMetrics(QWidget* button)
 {
     if (button == nullptr)
     {
         return;
     }
-    button->setMinimumHeight(24);
+    button->setMinimumHeight(31);
 }
 
-void configureServerTinyButtonMetrics(QPushButton* button)
+void configureServerTinyButtonMetrics(QWidget* button)
 {
     if (button == nullptr)
     {
@@ -152,7 +153,7 @@ void configureServerTinyButtonMetrics(QPushButton* button)
     button->setMinimumWidth(102);
 }
 
-void configureServerHeaderActionMetrics(QPushButton* button)
+void configureServerHeaderActionMetrics(QWidget* button)
 {
     if (button == nullptr)
     {
@@ -161,13 +162,13 @@ void configureServerHeaderActionMetrics(QPushButton* button)
     button->setMinimumHeight(22);
 }
 
-void configureServerStartButtonMetrics(QPushButton* button)
+void configureServerStartButtonMetrics(QWidget* button)
 {
     if (button == nullptr)
     {
         return;
     }
-    button->setMinimumHeight(34);
+    button->setMinimumHeight(41);
 }
 
 QColor playerPortColor(int portIndex)
@@ -821,6 +822,56 @@ void KailleraServerBrowserDialog::setupUI()
             "  padding-top: 5px;"
             "  padding-bottom: 3px;"
             "}"
+            "QPushButton#KailleraSecondarySplitMain {"
+            "  border: 1px solid palette(mid);"
+            "  border-right: none;"
+            "  border-top-left-radius: 7px;"
+            "  border-bottom-left-radius: 7px;"
+            "  border-top-right-radius: 0px;"
+            "  border-bottom-right-radius: 0px;"
+            "  padding: 4px 10px;"
+            "  background-color: palette(window);"
+            "}"
+            "QPushButton#KailleraSecondarySplitMain:hover {"
+            "  border-right: none;"
+            "  background-color: palette(light);"
+            "}"
+            "QPushButton#KailleraSecondarySplitMain:pressed {"
+            "  border-color: palette(shadow);"
+            "  border-right: none;"
+            "  background-color: palette(mid);"
+            "  padding-top: 5px;"
+            "  padding-bottom: 3px;"
+            "}"
+            "QPushButton#KailleraSecondarySplitMenu,"
+            "QToolButton#KailleraSecondarySplitMenu {"
+            "  border: 1px solid palette(mid);"
+            "  border-top-left-radius: 0px;"
+            "  border-bottom-left-radius: 0px;"
+            "  border-top-right-radius: 7px;"
+            "  border-bottom-right-radius: 7px;"
+            "  min-width: 24px;"
+            "  max-width: 24px;"
+            "  padding: 0px;"
+            "  background-color: palette(window);"
+            "}"
+            "QPushButton#KailleraSecondarySplitMenu:hover,"
+            "QToolButton#KailleraSecondarySplitMenu:hover {"
+            "  background-color: palette(light);"
+            "}"
+            "QPushButton#KailleraSecondarySplitMenu:pressed,"
+            "QPushButton#KailleraSecondarySplitMenu:checked,"
+            "QToolButton#KailleraSecondarySplitMenu:pressed,"
+            "QToolButton#KailleraSecondarySplitMenu:checked,"
+            "QToolButton#KailleraSecondarySplitMenu:open {"
+            "  border-color: palette(shadow);"
+            "  background-color: palette(mid);"
+            "  padding-top: 1px;"
+            "}"
+            "QToolButton#KailleraSecondarySplitMenu::menu-indicator {"
+            "  image: none;"
+            "  width: 0px;"
+            "}"
             "QPushButton#KailleraTinyButton {"
             "  border: 1px solid palette(mid);"
             "  border-radius: 7px;"
@@ -1412,13 +1463,37 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
 
     auto* utilityRow = new QHBoxLayout();
     utilityRow->setSpacing(6);
-    m_btnLagStat = new QPushButton("Lagstat", rightWidget);
-    m_btnLagStat->setObjectName("KailleraSecondaryButton");
+    auto* lagControl = new QWidget(rightWidget);
+    auto* lagControlLayout = new QHBoxLayout(lagControl);
+    lagControlLayout->setContentsMargins(0, 0, 0, 0);
+    lagControlLayout->setSpacing(0);
+    lagControl->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+    m_btnLagStat = new QPushButton("Lagstat", lagControl);
+    m_btnLagStat->setObjectName(modern ? "KailleraSecondarySplitMain" : "KailleraSecondaryButton");
     configureServerButtonMetrics(m_btnLagStat);
     m_btnLagStat->setIcon(themedLineIcon("search-line"));
     m_btnLagStat->setIconSize(QSize(16, 16));
     m_btnLagStat->setAutoDefault(false);
     m_btnLagStat->setDefault(false);
+    m_btnLagStat->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+    auto* btnLagMenu = new QToolButton(lagControl);
+    btnLagMenu->setObjectName(modern ? "KailleraSecondarySplitMenu" : "KailleraSecondaryButton");
+    configureServerButtonMetrics(btnLagMenu);
+    btnLagMenu->setIcon(themedLineIcon("arrow-down-s-line"));
+    btnLagMenu->setIconSize(QSize(14, 14));
+    btnLagMenu->setToolTip("More lag tools");
+    btnLagMenu->setFixedWidth(24);
+
+    auto* lagMenu = new QMenu(btnLagMenu);
+    QAction* lagResetAction = lagMenu->addAction("Lagreset");
+    btnLagMenu->setMenu(lagMenu);
+    btnLagMenu->setPopupMode(QToolButton::InstantPopup);
+
+    lagControlLayout->addWidget(m_btnLagStat, 1);
+    lagControlLayout->addWidget(btnLagMenu);
+
     m_btnAdvertise = new QPushButton("Advertise", rightWidget);
     m_btnAdvertise->setObjectName("KailleraSecondaryButton");
     configureServerButtonMetrics(m_btnAdvertise);
@@ -1426,8 +1501,9 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
     m_btnAdvertise->setIconSize(QSize(16, 16));
     m_btnAdvertise->setAutoDefault(false);
     m_btnAdvertise->setDefault(false);
-    utilityRow->addWidget(m_btnLagStat);
-    utilityRow->addWidget(m_btnAdvertise);
+    m_btnAdvertise->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    utilityRow->addWidget(lagControl, 1);
+    utilityRow->addWidget(m_btnAdvertise, 1);
     rightVBox->addLayout(utilityRow);
 
     m_btnDrop = new QPushButton("Close Game", rightWidget);
@@ -1462,6 +1538,10 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
     connect(m_btnDrop, &QPushButton::clicked, this, &KailleraServerBrowserDialog::onDropGame);
     connect(m_btnLeave, &QPushButton::clicked, this, &KailleraServerBrowserDialog::onLeaveGame);
     connect(m_btnLagStat, &QPushButton::clicked, this, &KailleraServerBrowserDialog::onLagStat);
+    connect(lagResetAction, &QAction::triggered, this, [this]() {
+        QByteArray cmd("/lagreset");
+        kaillera_game_chat_send(cmd.data());
+    });
     connect(m_btnOptions, &QPushButton::clicked, this, &KailleraServerBrowserDialog::onOptions);
     connect(m_btnAdvertise, &QPushButton::clicked, this, &KailleraServerBrowserDialog::onAdvertise);
 
