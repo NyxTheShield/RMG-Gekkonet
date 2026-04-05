@@ -29,8 +29,10 @@
 #include <QFileInfo>
 #include <QFileDialog>
 #include <QCoreApplication>
+#include <QRegularExpression>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <ctime>
 #include <fstream>
@@ -49,29 +51,70 @@ static QString ensureMp4Extension(QString path)
     return path;
 }
 
+static QString formatExportDuration(double totalSeconds)
+{
+    if (!(totalSeconds >= 0.0))
+    {
+        return "--:--";
+    }
+
+    const qint64 roundedSeconds = static_cast<qint64>(std::llround(totalSeconds));
+    const qint64 hours = roundedSeconds / 3600;
+    const qint64 minutes = (roundedSeconds / 60) % 60;
+    const qint64 seconds = roundedSeconds % 60;
+
+    if (hours > 0)
+    {
+        return QString("%1:%2:%3")
+            .arg(hours)
+            .arg(minutes, 2, 10, QChar('0'))
+            .arg(seconds, 2, 10, QChar('0'));
+    }
+
+    return QString("%1:%2")
+        .arg(minutes, 2, 10, QChar('0'))
+        .arg(seconds, 2, 10, QChar('0'));
+}
+
 static QString summarizeExportLog(const QString& log)
 {
     QString normalizedLog = log;
     normalizedLog.replace('\r', '\n');
 
     const QStringList lines = normalizedLog.split('\n', Qt::SkipEmptyParts);
-    QString latestLine;
-    if (!lines.isEmpty())
+    if (lines.isEmpty())
     {
-        latestLine = lines.last().trimmed();
+        return {};
     }
 
-    if (latestLine.length() > 160)
+    QStringList summaryLines;
+    const qsizetype startIndex = std::max<qsizetype>(0, lines.size() - 12);
+    for (qsizetype i = startIndex; i < lines.size(); ++i)
     {
-        latestLine = latestLine.left(157) + "...";
+        const QString line = lines.at(i).trimmed();
+        if (!line.isEmpty())
+        {
+            summaryLines.append(line);
+        }
     }
 
-    if (latestLine.isEmpty())
-    {
-        return "Exporting recording to MP4...\n\nThis may take a while.";
-    }
+    return summaryLines.join('\n');
+}
 
-    return "Exporting recording to MP4...\n\n" + latestLine;
+static bool isExportNoiseLine(const QString& line)
+{
+    return line.startsWith("[m64p] No version number") ||
+           line == "[m64p] Input plugin does not contain VRU support.";
+}
+
+static QString normalizeStatusLine(QString line)
+{
+    line = line.trimmed();
+    if (line.length() > 140)
+    {
+        line = line.left(137) + "...";
+    }
+    return line;
 }
 
 KailleraPlaybackDialog::KailleraPlaybackDialog(QWidget* parent)
@@ -196,6 +239,11 @@ void KailleraPlaybackDialog::onPlaybackTimer()
     else if (m_frameLabel)
     {
         m_frameLabel->setText("");
+    }
+
+    if (m_exportProcess != nullptr && m_exportProgressDialog != nullptr)
+    {
+        updateExportProgressDialog();
     }
 
     // Detect playback ending naturally (recording ran out).
@@ -475,12 +523,16 @@ QString KailleraPlaybackDialog::getSelectedRecordingPath() const
     return QDir(getKailleraRecordsDirectory()).filePath(fileNameItem->text());
 }
 
-QString KailleraPlaybackDialog::getSelectedRecordingGameName(QString* recordingPath) const
+QString KailleraPlaybackDialog::getSelectedRecordingGameName(QString* recordingPath, int* totalFrames) const
 {
     const QString selectedPath = getSelectedRecordingPath();
     if (recordingPath != nullptr)
     {
         *recordingPath = selectedPath;
+    }
+    if (totalFrames != nullptr)
+    {
+        *totalFrames = 0;
     }
 
     if (selectedPath.isEmpty())
@@ -495,6 +547,11 @@ QString KailleraPlaybackDialog::getSelectedRecordingGameName(QString* recordingP
         return {};
     }
 
+    if (totalFrames != nullptr)
+    {
+        *totalFrames = krecData.totalInputFrames;
+    }
+
     return QString::fromStdString(krecData.header.gameName);
 }
 
@@ -504,6 +561,13 @@ void KailleraPlaybackDialog::resetExportUi()
     {
         m_btnExport->setEnabled(true);
     }
+
+    m_exportPendingOutput.clear();
+    m_exportStatusLine.clear();
+    m_exportVideoEncoder.clear();
+    m_exportTargetSpeed.clear();
+    m_exportCapturedFrames = 0;
+    m_exportTotalFrames = 0;
 
     if (m_exportProgressDialog != nullptr)
     {
@@ -521,7 +585,8 @@ void KailleraPlaybackDialog::resetExportUi()
 
 void KailleraPlaybackDialog::startExportProcess(const QString& recordingPath,
                                                 const QString& romPath,
-                                                const QString& outputPath)
+                                                const QString& outputPath,
+                                                int totalFrames)
 {
     if (m_exportProcess != nullptr)
     {
@@ -530,7 +595,14 @@ void KailleraPlaybackDialog::startExportProcess(const QString& recordingPath,
 
     m_exportCanceled = false;
     m_exportLog.clear();
+    m_exportPendingOutput.clear();
+    m_exportStatusLine = "Starting export...";
+    m_exportVideoEncoder.clear();
+    m_exportTargetSpeed.clear();
+    m_exportCapturedFrames = 0;
+    m_exportTotalFrames = std::max(0, totalFrames);
     m_exportOutputPath = outputPath;
+    m_exportElapsedTimer.start();
 
     m_exportProcess = new QProcess(this);
     m_exportProcess->setProcessChannelMode(QProcess::MergedChannels);
@@ -555,6 +627,15 @@ void KailleraPlaybackDialog::startExportProcess(const QString& recordingPath,
     m_exportProgressDialog->setAutoReset(false);
     m_exportProgressDialog->setMinimumWidth(520);
     m_exportProgressDialog->setMaximumWidth(700);
+    if (m_exportTotalFrames > 0)
+    {
+        m_exportProgressDialog->setRange(0, m_exportTotalFrames);
+        m_exportProgressDialog->setValue(0);
+    }
+    else
+    {
+        m_exportProgressDialog->setRange(0, 0);
+    }
     connect(m_exportProgressDialog, &QProgressDialog::canceled, this, [this]() {
         m_exportCanceled = true;
         if (m_exportProcess != nullptr)
@@ -577,6 +658,7 @@ void KailleraPlaybackDialog::startExportProcess(const QString& recordingPath,
         return;
     }
 
+    updateExportProgressDialog();
     m_exportProgressDialog->show();
 }
 
@@ -723,7 +805,8 @@ void KailleraPlaybackDialog::onPlaybackExport()
     }
 
     QString recordingPath;
-    const QString gameName = getSelectedRecordingGameName(&recordingPath);
+    int totalFrames = 0;
+    const QString gameName = getSelectedRecordingGameName(&recordingPath, &totalFrames);
     if (recordingPath.isEmpty())
     {
         QMessageBox::information(this, "Export MP4", "Select a recording to export first.");
@@ -767,7 +850,7 @@ void KailleraPlaybackDialog::onPlaybackExport()
         return;
     }
 
-    startExportProcess(recordingPath, romPath, ensureMp4Extension(chosenOutputPath));
+    startExportProcess(recordingPath, romPath, ensureMp4Extension(chosenOutputPath), totalFrames);
 }
 
 void KailleraPlaybackDialog::onExportProcessOutput()
@@ -777,28 +860,19 @@ void KailleraPlaybackDialog::onExportProcessOutput()
         return;
     }
 
-    m_exportLog += QString::fromLocal8Bit(m_exportProcess->readAll());
-    if (m_exportProgressDialog == nullptr)
-    {
-        return;
-    }
-
-    const QString summary = summarizeExportLog(m_exportLog);
-    m_exportProgressDialog->setLabelText(summary);
+    processExportOutputText(QString::fromLocal8Bit(m_exportProcess->readAll()));
+    updateExportProgressDialog();
 }
 
 void KailleraPlaybackDialog::onExportProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
     onExportProcessOutput();
+    processExportOutputText(QString(), true);
+    updateExportProgressDialog();
 
     const bool canceled = m_exportCanceled;
     const QString outputPath = m_exportOutputPath;
-    QString normalizedLog = m_exportLog;
-    normalizedLog.replace('\r', '\n');
-    const QStringList lines = normalizedLog.split('\n', Qt::SkipEmptyParts);
-    const QString logSummary = lines.isEmpty()
-        ? QString()
-        : lines.mid(std::max<qsizetype>(0, lines.size() - 12)).join('\n');
+    const QString logSummary = summarizeExportLog(m_exportLog);
 
     resetExportUi();
 
@@ -823,6 +897,197 @@ void KailleraPlaybackDialog::onExportProcessFinished(int exitCode, QProcess::Exi
     }
 
     QMessageBox::warning(this, "Export MP4", message);
+}
+
+void KailleraPlaybackDialog::processExportOutputText(const QString& text, bool finalizePartialLine)
+{
+    QString normalizedText = text;
+    normalizedText.replace('\r', '\n');
+    if (!normalizedText.isEmpty())
+    {
+        m_exportLog += normalizedText;
+        m_exportPendingOutput += normalizedText;
+    }
+
+    for (;;)
+    {
+        const int newlineIndex = m_exportPendingOutput.indexOf('\n');
+        if (newlineIndex < 0)
+        {
+            break;
+        }
+
+        const QString line = m_exportPendingOutput.left(newlineIndex);
+        m_exportPendingOutput.remove(0, newlineIndex + 1);
+        processExportOutputLine(line);
+    }
+
+    if (finalizePartialLine && !m_exportPendingOutput.trimmed().isEmpty())
+    {
+        processExportOutputLine(m_exportPendingOutput);
+        m_exportPendingOutput.clear();
+    }
+}
+
+void KailleraPlaybackDialog::processExportOutputLine(const QString& rawLine)
+{
+    const QString line = rawLine.trimmed();
+    if (line.isEmpty() || isExportNoiseLine(line))
+    {
+        return;
+    }
+
+    static const QRegularExpression progressWithTotalRegex("^Captured\\s+(\\d+)\\s*/\\s*(\\d+)\\s+frames\\.\\.\\.$");
+    static const QRegularExpression progressWithoutTotalRegex("^Captured\\s+(\\d+)\\s+frames\\.\\.\\.$");
+
+    const QRegularExpressionMatch totalMatch = progressWithTotalRegex.match(line);
+    if (totalMatch.hasMatch())
+    {
+        m_exportCapturedFrames = totalMatch.captured(1).toInt();
+        m_exportTotalFrames = std::max(m_exportTotalFrames, totalMatch.captured(2).toInt());
+        m_exportStatusLine = "Capturing frames...";
+        return;
+    }
+
+    const QRegularExpressionMatch partialMatch = progressWithoutTotalRegex.match(line);
+    if (partialMatch.hasMatch())
+    {
+        m_exportCapturedFrames = std::max(m_exportCapturedFrames, partialMatch.captured(1).toInt());
+        m_exportStatusLine = "Capturing frames...";
+        return;
+    }
+
+    if (line.startsWith("Using FFmpeg video encoder: "))
+    {
+        m_exportVideoEncoder = normalizeStatusLine(line.mid(QString("Using FFmpeg video encoder: ").size()));
+        return;
+    }
+
+    if (line.startsWith("Using replay export speed target: "))
+    {
+        m_exportTargetSpeed = normalizeStatusLine(line.mid(QString("Using replay export speed target: ").size()));
+        return;
+    }
+
+    if (line.startsWith("Replay export finished: "))
+    {
+        m_exportStatusLine = "Finalizing MP4...";
+        return;
+    }
+
+    m_exportStatusLine = normalizeStatusLine(line);
+}
+
+QString KailleraPlaybackDialog::buildExportProgressSummary() const
+{
+    QStringList lines;
+    lines << "Exporting recording to MP4..." << "";
+
+    const double elapsedSeconds = m_exportElapsedTimer.isValid()
+        ? static_cast<double>(m_exportElapsedTimer.elapsed()) / 1000.0
+        : 0.0;
+
+    if (m_exportTotalFrames > 0)
+    {
+        const int boundedFrames = std::clamp(m_exportCapturedFrames, 0, m_exportTotalFrames);
+        const double percent = (100.0 * static_cast<double>(boundedFrames)) /
+                               static_cast<double>(m_exportTotalFrames);
+        lines << QString("Progress: %1 / %2 frames (%3%)")
+                     .arg(boundedFrames)
+                     .arg(m_exportTotalFrames)
+                     .arg(QString::number(percent, 'f', 1));
+    }
+    else if (m_exportCapturedFrames > 0)
+    {
+        lines << QString("Progress: %1 frames").arg(m_exportCapturedFrames);
+    }
+    else
+    {
+        lines << "Progress: starting...";
+    }
+
+    lines << QString("Elapsed: %1").arg(formatExportDuration(elapsedSeconds));
+
+    if (elapsedSeconds >= 0.25 && m_exportCapturedFrames > 0)
+    {
+        const double exportFps = static_cast<double>(m_exportCapturedFrames) / elapsedSeconds;
+        const double realtimeMultiplier = exportFps / 60.0;
+        lines << QString("Actual rate: %1 fps (%2x realtime)")
+                     .arg(QString::number(exportFps, 'f', 1))
+                     .arg(QString::number(realtimeMultiplier, 'f', 2));
+
+        if (m_exportTotalFrames > 0 && m_exportCapturedFrames < m_exportTotalFrames)
+        {
+            const double remainingFrames = static_cast<double>(m_exportTotalFrames - m_exportCapturedFrames);
+            const double etaSeconds = remainingFrames / exportFps;
+            lines << QString("ETA: %1").arg(formatExportDuration(etaSeconds));
+        }
+        else if (m_exportTotalFrames > 0)
+        {
+            lines << "ETA: 00:00";
+        }
+        else
+        {
+            lines << "ETA: calculating...";
+        }
+    }
+    else
+    {
+        lines << "Actual rate: measuring...";
+        lines << "ETA: calculating...";
+    }
+
+    if (!m_exportVideoEncoder.isEmpty())
+    {
+        lines << "Encoder: " + m_exportVideoEncoder;
+    }
+
+    if (!m_exportTargetSpeed.isEmpty())
+    {
+        lines << "Target emu speed: " + m_exportTargetSpeed;
+    }
+
+    if (!m_exportStatusLine.isEmpty())
+    {
+        lines << "Status: " + m_exportStatusLine;
+    }
+    else
+    {
+        lines << "Status: Working...";
+    }
+
+    return lines.join('\n');
+}
+
+void KailleraPlaybackDialog::updateExportProgressDialog()
+{
+    if (m_exportProgressDialog == nullptr)
+    {
+        return;
+    }
+
+    if (m_exportTotalFrames > 0)
+    {
+        const int boundedValue = std::clamp(m_exportCapturedFrames, 0, m_exportTotalFrames);
+        if (m_exportProgressDialog->maximum() != m_exportTotalFrames)
+        {
+            m_exportProgressDialog->setRange(0, m_exportTotalFrames);
+        }
+        if (m_exportProgressDialog->value() != boundedValue)
+        {
+            m_exportProgressDialog->setValue(boundedValue);
+        }
+    }
+    else if (m_exportProgressDialog->maximum() != 0)
+    {
+        m_exportProgressDialog->setRange(0, 0);
+    }
+
+    const QString summary = buildExportProgressSummary();
+    if (m_exportProgressDialog->labelText() != summary)
+    {
+        m_exportProgressDialog->setLabelText(summary);
+    }
 }
 
 void KailleraPlaybackDialog::onPlaybackDoubleClicked(int row, int column)

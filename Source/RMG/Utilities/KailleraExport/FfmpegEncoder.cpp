@@ -24,6 +24,7 @@ struct EncoderCandidate
 
 static constexpr EncoderCandidate kPreferredVideoEncoders[] = {
     { "h264_nvenc", true },
+    { "h264_qsv", true },
     { "h264_amf", true },
     { "libx264", false },
 };
@@ -175,6 +176,15 @@ static std::string buildVideoEncoderFlags(const std::string& videoEncoder, int c
                  sizeof(buffer),
                  "-c:v h264_amf -quality quality -rc cqp -qp_i %d -qp_p %d -pix_fmt yuv420p",
                  crf,
+                 crf);
+        return buffer;
+    }
+
+    if (videoEncoder == "h264_qsv")
+    {
+        snprintf(buffer,
+                 sizeof(buffer),
+                 "-c:v h264_qsv -global_quality %d -look_ahead 0",
                  crf);
         return buffer;
     }

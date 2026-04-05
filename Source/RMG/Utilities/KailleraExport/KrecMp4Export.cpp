@@ -332,6 +332,19 @@ static bool runReplayExport(const ReplayExportOptions& options, std::string* err
     FlushFrameCapture();
     encoder.close();
 
+    std::string frameCaptureError;
+    if (GetFrameCaptureError(&frameCaptureError))
+    {
+        shutdownGuard();
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = frameCaptureError;
+        }
+        std::filesystem::remove(tempVideoPath);
+        std::filesystem::remove(tempAudioPath);
+        return false;
+    }
+
     unsigned int audioFrequency = 33600;
     unsigned long long audioBytes = 0;
     if (getFrequencyFn != nullptr)

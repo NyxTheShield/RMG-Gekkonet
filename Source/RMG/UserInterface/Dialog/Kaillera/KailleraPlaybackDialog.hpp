@@ -19,6 +19,7 @@
 #include <QLabel>
 #include <QProcess>
 #include <QProgressDialog>
+#include <QElapsedTimer>
 
 class KailleraPlaybackDialog : public QDialog
 {
@@ -46,9 +47,13 @@ private:
     void setupUI();
     void populatePlaybackList();
     QString getSelectedRecordingPath() const;
-    QString getSelectedRecordingGameName(QString* recordingPath = nullptr) const;
+    QString getSelectedRecordingGameName(QString* recordingPath = nullptr, int* totalFrames = nullptr) const;
     void resetExportUi();
-    void startExportProcess(const QString& recordingPath, const QString& romPath, const QString& outputPath);
+    void startExportProcess(const QString& recordingPath, const QString& romPath, const QString& outputPath, int totalFrames);
+    void processExportOutputText(const QString& text, bool finalizePartialLine = false);
+    void processExportOutputLine(const QString& line);
+    void updateExportProgressDialog();
+    QString buildExportProgressSummary() const;
 
     QTableWidget* m_playbackTable = nullptr;
     QPushButton* m_btnPlay = nullptr;
@@ -65,6 +70,13 @@ private:
     bool m_exportCanceled = false;
     QString m_exportOutputPath;
     QString m_exportLog;
+    QString m_exportPendingOutput;
+    QString m_exportStatusLine;
+    QString m_exportVideoEncoder;
+    QString m_exportTargetSpeed;
+    int m_exportCapturedFrames = 0;
+    int m_exportTotalFrames = 0;
+    QElapsedTimer m_exportElapsedTimer;
 
     QTimer* m_playbackTimer = nullptr;
     QProcess* m_exportProcess = nullptr;

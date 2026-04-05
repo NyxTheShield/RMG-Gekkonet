@@ -3,6 +3,8 @@
 #include "EmulatorProxy.hpp"
 #include "FfmpegEncoder.hpp"
 
+#include <string>
+
 namespace KailleraExport
 {
 
@@ -12,6 +14,7 @@ void InitializeFrameCapture(EmulatorProxy* emulator,
                             int expectedFrameCount);
 void FrameCaptureCallback(unsigned int frameIndex);
 void FlushFrameCapture();
+bool GetFrameCaptureError(std::string* errorMessage);
 int GetCapturedFrameCount();
 
 } // namespace KailleraExport
