@@ -77,7 +77,8 @@ ControllerWidget::ControllerWidget(QWidget* parent, EventFilter* eventFilter) : 
         { N64ControllerButton::CButtonRight, this->cbuttonRightButton },
         { N64ControllerButton::LeftShoulder, this->leftShoulderButton },
         { N64ControllerButton::RightShoulder, this->rightShoulderButton },
-        { N64ControllerButton::ZTrigger, this->zTriggerButton }
+        { N64ControllerButton::ZTrigger, this->zTriggerButton },
+        { N64ControllerButton::ZTrigger2, this->zTrigger2Button }
     });
 
     this->joystickWidgetMappings.append(
@@ -104,6 +105,7 @@ ControllerWidget::ControllerWidget(QWidget* parent, EventFilter* eventFilter) : 
         { this->leftShoulderButton, SettingsID::Input_LeftShoulder_InputType, SettingsID::Input_LeftShoulder_Name, SettingsID::Input_LeftShoulder_Data, SettingsID::Input_LeftShoulder_ExtraData },
         { this->rightShoulderButton, SettingsID::Input_RightShoulder_InputType, SettingsID::Input_RightShoulder_Name, SettingsID::Input_RightShoulder_Data, SettingsID::Input_RightShoulder_ExtraData },
         { this->zTriggerButton, SettingsID::Input_ZTrigger_InputType, SettingsID::Input_ZTrigger_Name, SettingsID::Input_ZTrigger_Data, SettingsID::Input_ZTrigger_ExtraData },
+        { this->zTrigger2Button, SettingsID::Input_ZTrigger2_InputType, SettingsID::Input_ZTrigger2_Name, SettingsID::Input_ZTrigger2_Data, SettingsID::Input_ZTrigger2_ExtraData },
         { this->analogStickUpButton, SettingsID::Input_AnalogStickUp_InputType, SettingsID::Input_AnalogStickUp_Name, SettingsID::Input_AnalogStickUp_Data, SettingsID::Input_AnalogStickUp_ExtraData },
         { this->analogStickDownButton, SettingsID::Input_AnalogStickDown_InputType, SettingsID::Input_AnalogStickDown_Name, SettingsID::Input_AnalogStickDown_Data, SettingsID::Input_AnalogStickDown_ExtraData },
         { this->analogStickLeftButton, SettingsID::Input_AnalogStickLeft_InputType, SettingsID::Input_AnalogStickLeft_Name, SettingsID::Input_AnalogStickLeft_Data, SettingsID::Input_AnalogStickLeft_ExtraData },
@@ -173,6 +175,7 @@ ControllerWidget::ControllerWidget(QWidget* parent, EventFilter* eventFilter) : 
         this->leftShoulderButton,
         this->rightShoulderButton,
         this->zTriggerButton,
+        this->zTrigger2Button,
         // buttons
         this->aButton,
         this->bButton,
@@ -221,6 +224,7 @@ void ControllerWidget::initializeMappingButtons()
         { this->leftShoulderButton, this->leftShoulderAddButton, this->leftShoulderRemoveButton },
         { this->rightShoulderButton, this->rightShoulderAddButton, this->rightShoulderRemoveButton },
         { this->zTriggerButton, this->zTriggerAddButton, this->zTriggerRemoveButton },
+        { this->zTrigger2Button, this->zTrigger2AddButton, this->zTrigger2RemoveButton },
         // buttons
         { this->aButton, this->aAddButton, this->aRemoveButton },
         { this->bButton, this->bAddButton, this->bRemoveButton },
@@ -238,11 +242,7 @@ void ControllerWidget::initializeMappingButtons()
         QSize mappingIconSize(20, 16);
         QSize mappingButtonSize(28, 28);
         QString iconButtonStyle = QStringLiteral("padding: 0px;");
-        mapping.addMappingButton->setText("");
-        mapping.addMappingButton->setIcon(QIcon::fromTheme("add-line"));
-        mapping.addMappingButton->setIconSize(mappingIconSize);
-        mapping.addMappingButton->setFixedSize(mappingButtonSize);
-        mapping.addMappingButton->setStyleSheet(iconButtonStyle);
+        mapping.addMappingButton->hide();
         mapping.removeMappingButton->setText("");
         mapping.removeMappingButton->setIcon(QIcon::fromTheme("delete-back-line"));
         mapping.removeMappingButton->setIconSize(mappingIconSize);
@@ -439,6 +439,7 @@ void ControllerWidget::setPluggedIn(bool value)
         this->leftShoulderButton, this->leftShoulderAddButton, this->leftShoulderRemoveButton,
         this->rightShoulderButton, this->rightShoulderAddButton, this->rightShoulderRemoveButton,
         this->zTriggerButton, this->zTriggerAddButton, this->zTriggerRemoveButton,
+        this->zTrigger2Button, this->zTrigger2AddButton, this->zTrigger2RemoveButton,
         // buttons
         this->buttonsGroupBox,
         this->aButton, this->aAddButton, this->aRemoveButton,
@@ -1133,7 +1134,6 @@ void ControllerWidget::on_MappingButton_Released(MappingButton* button)
 
 void ControllerWidget::on_AddMappingButton_Released(MappingButton* button)
 {
-    this->addMappingToButton = true;
     button->click();
 }
 
@@ -1146,8 +1146,7 @@ void ControllerWidget::on_MappingButton_TimerFinished(MappingButton* button)
 {
     if (this->currentButton == button)
     {
-        this->currentButton      = nullptr;
-        this->addMappingToButton = false;
+        this->currentButton = nullptr;
     }
 
     button->RestoreState();
@@ -1159,8 +1158,7 @@ void ControllerWidget::on_MappingButton_DataSet(MappingButton* button)
 {
     this->enableAllChildren();
     this->removeDuplicates(button);
-    this->currentButton      = nullptr;
-    this->addMappingToButton = false;
+    this->currentButton = nullptr;
 }
 
 void ControllerWidget::on_MappingButton_Resized(MappingButton* button, QResizeEvent* event)
@@ -1186,6 +1184,7 @@ void ControllerWidget::on_MappingButton_Resized(MappingButton* button, QResizeEv
         this->leftShoulderAddButton, this->leftShoulderRemoveButton,
         this->rightShoulderAddButton, this->rightShoulderRemoveButton,
         this->zTriggerAddButton, this->zTriggerRemoveButton,
+        this->zTrigger2AddButton, this->zTrigger2RemoveButton,
         // buttons
         this->aAddButton, this->aRemoveButton,
         this->bAddButton, this->bRemoveButton,
@@ -1270,24 +1269,12 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
             {
                 if (sdlButtonPressed)
                 {
-                    if (this->addMappingToButton)
-                    {
-                        this->currentButton->AddInputData(
-                            inputType,
-                            sdlButton,
-                            0,
-                            sdlButtonName
-                        );
-                    }
-                    else
-                    {
-                        this->currentButton->SetInputData(
-                            inputType,
-                            sdlButton,
-                            0,
-                            sdlButtonName
-                        );
-                    }
+                    this->currentButton->SetInputData(
+                        inputType,
+                        sdlButton,
+                        0,
+                        sdlButtonName
+                    );
                 }
                 break;
             }
@@ -1363,24 +1350,12 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
             {
                 if (!sdlHatCentered)
                 {
-                    if (this->addMappingToButton)
-                    {
-                        this->currentButton->AddInputData(
-                            inputType,
-                            sdlHat,
-                            sdlHatDirection,
-                            sdlHatName
-                        );
-                    }
-                    else
-                    {
-                        this->currentButton->SetInputData(
-                            inputType,
-                            sdlHat,
-                            sdlHatDirection,
-                            sdlHatName
-                        );
-                    }
+                    this->currentButton->SetInputData(
+                        inputType,
+                        sdlHat,
+                        sdlHatDirection,
+                        sdlHatName
+                    );
                 }
                 break;
             }
@@ -1531,24 +1506,12 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
             {
                 if (sdlAxisButtonPressed)
                 {
-                    if (this->addMappingToButton)
-                    {
-                        this->currentButton->AddInputData(
-                            inputType, 
-                            sdlAxis,
-                            sdlAxisDirection,
-                            sdlAxisName
-                        );
-                    }
-                    else
-                    {
-                        this->currentButton->SetInputData(
-                            inputType, 
-                            sdlAxis,
-                            sdlAxisDirection,
-                            sdlAxisName
-                        );
-                    }
+                    this->currentButton->SetInputData(
+                        inputType,
+                        sdlAxis,
+                        sdlAxisDirection,
+                        sdlAxisName
+                    );
                 }
                 break;
             }
@@ -1619,24 +1582,12 @@ void ControllerWidget::on_MainDialog_SdlEvent(SDL_Event* event)
             {
                 if (sdlButtonPressed)
                 {
-                    if (this->addMappingToButton)
-                    {
-                        this->currentButton->AddInputData(
-                            InputType::Keyboard, 
-                            sdlButton,
-                            0,
-                            SDL_GetScancodeName(sdlButton)
-                        );
-                    }
-                    else
-                    {
-                        this->currentButton->SetInputData(
-                            InputType::Keyboard, 
-                            sdlButton,
-                            0,
-                            SDL_GetScancodeName(sdlButton)
-                        );
-                    }
+                    this->currentButton->SetInputData(
+                        InputType::Keyboard,
+                        sdlButton,
+                        0,
+                        SDL_GetScancodeName(sdlButton)
+                    );
                 }
                 break;
             }
