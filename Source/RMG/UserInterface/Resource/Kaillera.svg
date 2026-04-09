@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   id="svg2"
+   sodipodi:version="0.32"
+   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
+   width="127"
+   height="127"
+   version="1.0"
+   sodipodi:docname="K.svg"
+   inkscape:output_extension="org.inkscape.output.svg.inkscape"
+   inkscape:export-filename="/home/templarapheonix/Desktop/Mupen64_icon.png"
+   inkscape:export-xdpi="198.08128"
+   inkscape:export-ydpi="198.08128">
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:date>August 17, 2008</dc:date>
+        <dc:creator>
+          <cc:Agent>
+            <dc:title>Tillin9</dc:title>
+          </cc:Agent>
+        </dc:creator>
+        <dc:rights>
+          <cc:Agent>
+            <dc:title>Copyright (C) Tillin9</dc:title>
+          </cc:Agent>
+        </dc:rights>
+        <dc:source>GPL (v2 or later) </dc:source>
+        <dc:description>This icon is original work created by Tillin9 for Mupen64plus. 
+
+This icon is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or  (at your option) any later version.
+
+You may also copy it under the Creative Common Attribution-ShareAlike 3.0 license, as found here:   http://creativecommons.org/licenses/by-sa/3.0/ 
+
+It is the author's desire that SVG / vector format copies be GPLed and rasterizations licensed under Creative Commons. This is because there are no clear guidelines to applying the GPL to artwork, whereas vector data consitutes source.</dc:description>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs5">
+    <inkscape:path-effect
+       effect="offset"
+       id="path-effect"
+       is_visible="true"
+       lpeversion="1.3"
+       linejoin_type="round"
+       unit="px"
+       offset="6.0336868"
+       miter_limit="4"
+       attempt_force_join="false"
+       update_on_knot_move="true" />
+    <linearGradient
+       id="linearGradient5199-0">
+      <stop
+         style="stop-color:#6adbff;stop-opacity:1;"
+         offset="0"
+         id="stop5201-9" />
+      <stop
+         style="stop-color:#074b85;stop-opacity:1;"
+         offset="1"
+         id="stop5203-4" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient5199-0"
+       id="linearGradient3"
+       x1="93.043335"
+       y1="82.058647"
+       x2="110.04039"
+       y2="116.04542"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(2.6816386,0,0,2.6816386,-208.79851,-202.12175)" />
+  </defs>
+  <sodipodi:namedview
+     inkscape:window-height="1372"
+     inkscape:window-width="2560"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     guidetolerance="10.0"
+     gridtolerance="10.0"
+     objecttolerance="10.0"
+     borderopacity="1.0"
+     bordercolor="#666666"
+     pagecolor="#ffffff"
+     id="base"
+     showgrid="false"
+     inkscape:snap-global="true"
+     showguides="true"
+     inkscape:guide-bbox="true"
+     inkscape:zoom="3.9774759"
+     inkscape:cx="46.763326"
+     inkscape:cy="89.755416"
+     inkscape:window-x="1276"
+     inkscape:window-y="-4"
+     inkscape:current-layer="svg2"
+     inkscape:document-rotation="0"
+     inkscape:window-maximized="1"
+     inkscape:showpageshadow="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050">
+    <inkscape:grid
+       id="grid1"
+       units="px"
+       originx="0"
+       originy="0"
+       spacingx="1"
+       spacingy="1"
+       empcolor="#0099e5"
+       empopacity="0.30196078"
+       color="#0099e5"
+       opacity="0.14901961"
+       empspacing="5"
+       enabled="true"
+       visible="false" />
+  </sodipodi:namedview>
+  <path
+     d="m 82.541016,77.009766 a 2.25,2.25 0 0 0 -2.25,2.25 v 39.583984 a 2.25,2.25 0 0 0 2.25,2.25 h 14.25 a 2.25,2.25 0 0 0 2.25,-2.25 v -7.29883 l 3.607424,8.20508 a 2.25,2.25 0 0 0 2.06054,1.34375 h 15.83204 a 2.25,2.25 0 0 0 2.01171,-3.25586 l -10.51171,-21.027343 10.39843,-16.34375 a 2.25,2.25 0 0 0 -1.89843,-3.457031 h -15.83204 a 2.25,2.25 0 0 0 -1.96679,1.15625 l -3.701174,6.660156 v -5.566406 a 2.25,2.25 0 0 0 -2.25,-2.25 z"
+     id="koutline"
+     style="font-size:50.6667px;font-family:NiseSegaSonic;-inkscape-font-specification:NiseSegaSonic;display:inline;fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:0;stroke-linecap:butt;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
+     inkscape:path-effect="#path-effect"
+     inkscape:original-d="M 82.541862,118.8437 V 79.260362 h 14.250001 v 14.250001 l 7.916667,-14.250001 h 15.83333 l -11.08333,17.416667 11.08333,22.166671 h -15.83333 l -7.916667,-18.01042 v 18.01042 z"
+     transform="matrix(2.6816386,0,0,2.6816386,-208.79577,-202.12102)" />
+  <path
+     d="M 12.54893,116.5741 V 10.425896 H 50.762283 V 48.639249 L 71.991923,10.425896 H 114.45119 L 84.729706,57.131103 114.45119,116.5741 H 71.991923 L 50.762283,68.276666 V 116.5741 Z"
+     id="k"
+     style="font-size:50.6667px;font-family:NiseSegaSonic;-inkscape-font-specification:NiseSegaSonic;display:inline;fill:url(#linearGradient3);fill-rule:evenodd;stroke:#ffffff;stroke-width:4.02246;stroke-linecap:butt;stroke-linejoin:round;stroke-opacity:1" />
+</svg>

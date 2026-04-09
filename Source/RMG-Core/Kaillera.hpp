@@ -14,6 +14,7 @@
 
 #include <string>
 #include <functional>
+#include <cstdint>
 
 namespace CoreKaillera
 {
@@ -37,6 +38,9 @@ CORE_EXPORT bool CoreShutdownKaillera(void);
 
 // Check if Kaillera has been initialized
 CORE_EXPORT bool CoreHasInitKaillera(void);
+
+// Check if Kaillera is in playback mode (as opposed to live netplay)
+CORE_EXPORT bool CoreIsKailleraPlaybackMode(void);
 
 // Show Kaillera server selection dialog
 // parentHwnd: Handle to parent window (HWND on Windows)
@@ -87,5 +91,22 @@ CORE_EXPORT int CoreGetKailleraNumPlayers(void);
 // Get the frame delay assigned by the Kaillera server
 // Returns the number of frames to buffer inputs (0 if not in game)
 CORE_EXPORT int CoreGetKailleraFrameDelay(void);
+
+// Get the configured records directory path used for Kaillera recordings
+CORE_EXPORT std::string CoreGetKailleraRecordsDirectory(void);
+
+// Refresh cached records-folder usage status by scanning the records directory.
+// Returns true if the folder is currently above the configured cap.
+CORE_EXPORT bool CoreRefreshKailleraRecordingStorageStatus(void);
+
+// Return the cached "over cap" state. This does not scan.
+CORE_EXPORT bool CoreIsKailleraRecordingStorageOverCap(void);
+
+// Return the cached records-folder size in bytes.
+CORE_EXPORT uint64_t CoreGetKailleraRecordingStorageBytes(void);
+
+// Return the effective "record by default" value:
+// user setting && !(cap enabled && cached over-cap state)
+CORE_EXPORT bool CoreGetKailleraEffectiveRecordingDefault(void);
 
 #endif // CORE_KAILLERA_HPP

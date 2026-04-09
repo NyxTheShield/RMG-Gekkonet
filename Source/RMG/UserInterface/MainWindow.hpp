@@ -38,6 +38,8 @@
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QAction>
+#include <chrono>
+#include <deque>
 
 #include "ui_MainWindow.h"
 
@@ -136,6 +138,12 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     bool ui_AutoStartNetplayOnStartupPending = false;
     bool ui_NetplayChatInputActive = false;
     QString ui_NetplayChatInput;
+    struct PendingLocalChatEcho
+    {
+        QString message;
+        std::chrono::steady_clock::time_point time;
+    };
+    std::deque<PendingLocalChatEcho> ui_PendingLocalChatEchoes;
 #endif // NETPLAY
 
     bool ui_CheckRaphnetPluginMismatchPending = false;
@@ -146,6 +154,7 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
 
     void configureUI(QApplication* app, bool showUI);
     void configureTheme(QApplication* app);
+    void reapplyTheme(void);
 
     QString getWindowTitle(void);
 
@@ -187,6 +196,7 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     void showNetplaySessionDialog(QWebSocket* webSocket, QJsonObject json, QString sessionFile);
     QString findRomByName(QString gameName);
     void tryAutoStartNetplayOnStartup(void);
+    void refreshKailleraRecordingStorageStatus(bool showStartupWarning);
 #endif // NETPLAY
   protected:
     void showEvent(QShowEvent *event) Q_DECL_OVERRIDE;
@@ -254,8 +264,11 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     void on_Kaillera_ChatReceived(QString nickname, QString message);
     void on_Kaillera_PlayerDropped(QString nickname, int playerNum);
     void on_Kaillera_GameEnded(void);
+    void on_Kaillera_RecordingFileClosed(void);
     void on_RomBrowser_RomListRefreshFinished(bool canceled);
 #endif
+
+    void on_Action_Playback(void);
 
     void on_Action_Help_Github(void);
     void on_Action_Help_About(void);

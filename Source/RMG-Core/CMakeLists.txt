@@ -64,17 +64,31 @@ endif(PORTABLE_INSTALL)
 add_library(RMG-Core SHARED ${RMG_CORE_SOURCES})
 
 if(UNIX)
-    target_link_libraries(RMG-Core dl)
+    target_link_libraries(RMG-Core PRIVATE dl)
 endif(UNIX)
 
 if(WIN32)
-    target_link_libraries(RMG-Core wsock32 ws2_32 ${ICONV_LIBRARIES})
+    target_link_libraries(RMG-Core PRIVATE wsock32 ws2_32 ${ICONV_LIBRARIES})
 endif(WIN32)
 
-target_link_libraries(RMG-Core
+target_link_libraries(RMG-Core PRIVATE
     ${MINIZIP_LIBRARIES}
     lzma
 )
+
+# Link n02 static library for Kaillera netplay support
+# PRIVATE prevents n02 from being transitively linked into RMG.exe,
+# which would create duplicate static variables (two copies of n02 state).
+# --export-all-symbols forces the linker to export n02 functions from
+# RMG-Core.dll even though CORE_EXPORT (__declspec(dllexport)) triggers
+# selective export mode.
+if (NETPLAY AND WIN32)
+    target_link_libraries(RMG-Core PRIVATE n02)
+    target_include_directories(RMG-Core PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/../n02
+    )
+    target_link_options(RMG-Core PRIVATE -Wl,--export-all-symbols)
+endif()
 
 target_include_directories(RMG-Core PRIVATE 
     ${CMAKE_CURRENT_BINARY_DIR}

@@ -159,43 +159,45 @@ static void KailleraPifSyncCallback(struct pif* pif)
         }
     }
 
-    // Write cached synchronized inputs to PIF RAM for all netplay players
-    // (All polls within the same frame use the cached data)
-    if (s_CachedNumReceived > 0) {
-        for (int i = 0; i < s_CachedNumReceived && i < MAX_PLAYERS; i++) {
-            if (pif->channels[i].tx && pif->channels[i].rx != NULL) {
-                // Always clear error bits to show controller as connected
-                *pif->channels[i].rx &= ~0xC0;
+    // Write synchronized inputs to PIF RAM for all netplay players.
+    // JCMD_STATUS/JCMD_RESET are handled unconditionally so games detect
+    // controllers even before the first Kaillera sync (needed for playback
+    // without a physical controller connected).
+    // JCMD_CONTROLLER_READ data injection is gated on cache availability.
+    int numPlayers = CoreGetKailleraNumPlayers();
+    for (int i = 0; i < numPlayers && i < MAX_PLAYERS; i++) {
+        if (pif->channels[i].tx && pif->channels[i].rx != NULL) {
+            // Always clear error bits to show controller as connected
+            *pif->channels[i].rx &= ~0xC0;
 
-                uint8_t cmd = pif->channels[i].tx_buf[0];
+            uint8_t cmd = pif->channels[i].tx_buf[0];
 
-                if (cmd == JCMD_STATUS || cmd == JCMD_RESET) {
-                    // Controller detection - force standard controller type response
-                    if (pif->channels[i].rx_buf != NULL) {
-                        uint16_t type = 0x0500; // JDT_JOY_ABS_COUNTERS | JDT_JOY_PORT
-                        pif->channels[i].rx_buf[0] = (uint8_t)(type >> 0);
-                        pif->channels[i].rx_buf[1] = (uint8_t)(type >> 8);
-                        pif->channels[i].rx_buf[2] = 0; // No pak status
-                    }
+            if (cmd == JCMD_STATUS || cmd == JCMD_RESET) {
+                // Controller detection - force standard controller type response
+                if (pif->channels[i].rx_buf != NULL) {
+                    uint16_t type = 0x0500; // JDT_JOY_ABS_COUNTERS | JDT_JOY_PORT
+                    pif->channels[i].rx_buf[0] = (uint8_t)(type >> 0);
+                    pif->channels[i].rx_buf[1] = (uint8_t)(type >> 8);
+                    pif->channels[i].rx_buf[2] = 0; // No pak status
                 }
-                else if (cmd == JCMD_CONTROLLER_READ) {
-                    // Write synced controller input from cache
-                    if (pif->channels[i].rx_buf != NULL) {
-                        uint8_t* rx = pif->channels[i].rx_buf;
-                        rx[0] = (s_CachedSyncBuffer[i] >> 24) & 0xFF;
-                        rx[1] = (s_CachedSyncBuffer[i] >> 16) & 0xFF;
-                        rx[2] = (s_CachedSyncBuffer[i] >> 8) & 0xFF;
-                        rx[3] = s_CachedSyncBuffer[i] & 0xFF;
-                    }
+            }
+            else if (cmd == JCMD_CONTROLLER_READ) {
+                // Write synced controller input from cache (only when populated)
+                if (s_CachedNumReceived > 0 && i < s_CachedNumReceived && pif->channels[i].rx_buf != NULL) {
+                    uint8_t* rx = pif->channels[i].rx_buf;
+                    rx[0] = (s_CachedSyncBuffer[i] >> 24) & 0xFF;
+                    rx[1] = (s_CachedSyncBuffer[i] >> 16) & 0xFF;
+                    rx[2] = (s_CachedSyncBuffer[i] >> 8) & 0xFF;
+                    rx[3] = s_CachedSyncBuffer[i] & 0xFF;
                 }
-                else if (cmd == JCMD_PAK_READ && pif->channels[i].rx_buf != NULL) {
-                    // No controller pak present
-                    pif->channels[i].rx_buf[32] = 255;
-                }
-                else if (cmd == JCMD_PAK_WRITE && pif->channels[i].rx_buf != NULL) {
-                    // No controller pak present
-                    pif->channels[i].rx_buf[0] = 255;
-                }
+            }
+            else if (cmd == JCMD_PAK_READ && pif->channels[i].rx_buf != NULL) {
+                // No controller pak present
+                pif->channels[i].rx_buf[32] = 255;
+            }
+            else if (cmd == JCMD_PAK_WRITE && pif->channels[i].rx_buf != NULL) {
+                // No controller pak present
+                pif->channels[i].rx_buf[0] = 255;
             }
         }
     }
@@ -619,7 +621,7 @@ CORE_EXPORT bool CorePauseEmulation(void)
         return false;
     }
 
-    if (CoreHasInitNetplay() || CoreHasInitKaillera())
+    if (CoreHasInitNetplay() || (CoreHasInitKaillera() && !CoreIsKailleraPlaybackMode()))
     {
         return false;
     }
@@ -653,7 +655,7 @@ CORE_EXPORT bool CoreResumeEmulation(void)
         return false;
     }
 
-    if (CoreHasInitNetplay() || CoreHasInitKaillera())
+    if (CoreHasInitNetplay() || (CoreHasInitKaillera() && !CoreIsKailleraPlaybackMode()))
     {
         return false;
     }
@@ -670,6 +672,37 @@ CORE_EXPORT bool CoreResumeEmulation(void)
     if (ret != M64ERR_SUCCESS)
     {
         error = "CoreResumeEmulation m64p::Core.DoCommand(M64CMD_RESUME) Failed: ";
+        error += m64p::Core.ErrorMessage(ret);
+        CoreSetError(error);
+    }
+
+    return ret == M64ERR_SUCCESS;
+}
+
+CORE_EXPORT bool CoreAdvanceFrame(void)
+{
+    std::string error;
+    m64p_error ret;
+
+    if (!m64p::Core.IsHooked())
+    {
+        return false;
+    }
+
+    if (CoreHasInitNetplay() || (CoreHasInitKaillera() && !CoreIsKailleraPlaybackMode()))
+    {
+        return false;
+    }
+
+    if (!CoreIsEmulationRunning() && !CoreIsEmulationPaused())
+    {
+        return false;
+    }
+
+    ret = m64p::Core.DoCommand(M64CMD_ADVANCE_FRAME, 0, nullptr);
+    if (ret != M64ERR_SUCCESS)
+    {
+        error = "CoreAdvanceFrame DoCommand(M64CMD_ADVANCE_FRAME) Failed: ";
         error += m64p::Core.ErrorMessage(ret);
         CoreSetError(error);
     }

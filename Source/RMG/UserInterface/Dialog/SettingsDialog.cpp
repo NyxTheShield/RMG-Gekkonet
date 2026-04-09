@@ -21,6 +21,8 @@
 #include <QDirIterator>
 #include <QLabel>
 #include <QDir>
+#include <QIcon>
+#include <QList>
 
 #include <RMG-Core/CachedRomHeaderAndSettings.hpp>
 #include <RMG-Core/Directories.hpp>
@@ -28,6 +30,7 @@
 #include <RMG-Core/Settings.hpp>
 #include <RMG-Core/Error.hpp>
 #include <RMG-Core/Rom.hpp>
+#include <RMG-Core/Kaillera.hpp>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -36,6 +39,145 @@
 
 using namespace UserInterface::Dialog;
 using namespace Utilities;
+
+static QString getDisplayDirectoryPath(const QString& directoryPath)
+{
+    if (directoryPath.isEmpty())
+    {
+        return QString();
+    }
+
+    QString displayPath = directoryPath;
+    if (!QDir(displayPath).isAbsolute())
+    {
+        displayPath = QDir::current().absoluteFilePath(displayPath);
+    }
+
+    return QDir::toNativeSeparators(displayPath);
+}
+
+static void setupDirectoryChangeButtonIcon(QPushButton* button)
+{
+    if (button == nullptr)
+    {
+        return;
+    }
+
+    // Match the icon sizing approach used by input-mapping icon buttons.
+    button->setIcon(QIcon::fromTheme("folder-open-line"));
+    button->setIconSize(QSize(20, 16));
+}
+
+struct ThemeOption
+{
+    QString label;
+    QString value;
+    bool legacy;
+};
+
+static QList<ThemeOption> collectAvailableThemeOptions()
+{
+    QList<ThemeOption> options;
+
+    auto addOption = [&options](const QString& label, const QString& value, bool legacy)
+    {
+        for (const ThemeOption& existing : options)
+        {
+            if (existing.value == value)
+            {
+                return;
+            }
+        }
+
+        options.append({label, value, legacy});
+    };
+
+    addOption("Modern", "Modern", false);
+    addOption("Fusion", "Fusion", false);
+    addOption("Fusion Dark", "Fusion Dark", false);
+    addOption("Native", "Native", true);
+    addOption("Fusion Warm", "Fusion Warm", true);
+
+#ifdef _WIN32
+    addOption("Windows Vista", "Windows Vista", true);
+#endif
+
+    QString directory = QString::fromStdString(CoreGetSharedDataDirectory().string());
+    directory += CORE_DIR_SEPERATOR_STR;
+    directory += "Styles";
+    directory += CORE_DIR_SEPERATOR_STR;
+
+    const QStringList filter{"*.qss"};
+    QDirIterator stylesDirectoryIter(directory, filter, QDir::Files, QDirIterator::NoIteratorFlags);
+    while (stylesDirectoryIter.hasNext())
+    {
+        QFileInfo fileInfo(stylesDirectoryIter.next());
+        const QString value = fileInfo.fileName();
+        const QString label = fileInfo.completeBaseName().isEmpty() ? value : fileInfo.completeBaseName();
+        addOption(label, value, false);
+    }
+
+    return options;
+}
+
+static bool isLegacyThemeValue(const QList<ThemeOption>& options, const QString& themeValue)
+{
+    for (const ThemeOption& option : options)
+    {
+        if (option.value == themeValue)
+        {
+            return option.legacy;
+        }
+    }
+
+    return false;
+}
+
+static QString selectedThemeValue(const QComboBox* comboBox)
+{
+    if (comboBox == nullptr)
+    {
+        return QString();
+    }
+
+    const QVariant data = comboBox->currentData();
+    if (data.isValid() && !data.toString().isEmpty())
+    {
+        return data.toString();
+    }
+
+    return comboBox->currentText();
+}
+
+static void populateThemeCombo(QComboBox* comboBox, const QList<ThemeOption>& options, bool showLegacy, const QString& selectedValue)
+{
+    if (comboBox == nullptr)
+    {
+        return;
+    }
+
+    comboBox->clear();
+
+    int selectedIndex = -1;
+    for (const ThemeOption& option : options)
+    {
+        if (!showLegacy && option.legacy)
+        {
+            continue;
+        }
+
+        comboBox->addItem(option.label, option.value);
+        if (option.value == selectedValue)
+        {
+            selectedIndex = comboBox->count() - 1;
+        }
+    }
+
+    if (selectedIndex >= 0)
+    {
+        comboBox->setCurrentIndex(selectedIndex);
+    }
+}
 
 //
 // Local Enums
@@ -68,6 +210,17 @@ enum class SettingsDialogTab
 SettingsDialog::SettingsDialog(QWidget *parent, QString file) : QDialog(parent)
 {
     this->setupUi(this);
+
+    connect(this->showLegacyThemesCheckBox, &QCheckBox::toggled, this, [this](bool checked)
+    {
+        const QString currentTheme = selectedThemeValue(this->themeComboBox);
+        populateThemeCombo(this->themeComboBox, collectAvailableThemeOptions(), checked, currentTheme);
+    });
+
+    setupDirectoryChangeButtonIcon(this->changeScreenShotDirButton);
+    setupDirectoryChangeButtonIcon(this->changeSaveStateDirButton);
+    setupDirectoryChangeButtonIcon(this->changeSaveSramDirButton);
+    setupDirectoryChangeButtonIcon(this->changeKailleraRecordsDirectoryButton);
 
     this->setIconsForEmulationInfoText();
 
@@ -612,15 +765,39 @@ void SettingsDialog::loadDirectorySettings(void)
 
 void SettingsDialog::load64DDSettings(void)
 {
-    const std::string japaneseIPLRom = CoreSettingsGetStringValue(SettingsID::Core_64DD_JapaneseIPL);
-    const std::string americanIPlRom = CoreSettingsGetStringValue(SettingsID::Core_64DD_AmericanIPL);
-    const std::string developmentIPLRom = CoreSettingsGetStringValue(SettingsID::Core_64DD_DevelopmentIPL);
-    const int saveDiskFormat = CoreSettingsGetIntValue(SettingsID::Core_64DD_SaveDiskFormat);
+    int kailleraPort = CoreSettingsGetIntValue(SettingsID::Kaillera_Port);
+    if (kailleraPort < 1 || kailleraPort > 65535)
+    {
+        kailleraPort = 27886;
+    }
 
-    this->japaneseIPLRomLineEdit->setText(QString::fromStdString(japaneseIPLRom));
-    this->americanIPLRomLineEdit->setText(QString::fromStdString(americanIPlRom));
-    this->developmentIPLRomLineEdit->setText(QString::fromStdString(developmentIPLRom));
-    this->diskSaveTypeComboBox->setCurrentIndex(saveDiskFormat);
+    QString recordsDirectoryRaw = QString::fromStdString(
+        CoreSettingsGetStringValue(SettingsID::Kaillera_RecordsDirectory));
+    if (recordsDirectoryRaw.isEmpty())
+    {
+        recordsDirectoryRaw = "records";
+    }
+
+    int recordingCapMB = CoreSettingsGetIntValue(SettingsID::Kaillera_RecordingCapMB);
+    if (recordingCapMB < 1)
+    {
+        recordingCapMB = 1;
+    }
+
+    this->kailleraRecordByDefaultCheckBox->setChecked(
+        CoreSettingsGetBoolValue(SettingsID::Kaillera_RecordingEnabled));
+    this->kailleraPortSpinBox->setValue(kailleraPort);
+    this->kailleraRecordsDirectoryLineEdit->setProperty("rawPath", recordsDirectoryRaw);
+    this->kailleraRecordsDirectoryLineEdit->setText(getDisplayDirectoryPath(recordsDirectoryRaw));
+    this->kailleraRecordsDirectoryLineEdit->setToolTip(this->kailleraRecordsDirectoryLineEdit->text());
+    this->kailleraRecordingCapEnabledCheckBox->setChecked(
+        CoreSettingsGetBoolValue(SettingsID::Kaillera_RecordingCapEnabled));
+    this->kailleraRecordingCapMBSpinBox->setValue(recordingCapMB);
+    this->updateKailleraRecordingCapControls();
+    this->kailleraFlashOnJoinCheckBox->setChecked(
+        CoreSettingsGetBoolValue(SettingsID::Kaillera_FlashOnJoin));
+    this->kailleraBeepOnJoinCheckBox->setChecked(
+        CoreSettingsGetBoolValue(SettingsID::Kaillera_BeepOnJoin));
 }
 
 void SettingsDialog::loadHotkeySettings(void)
@@ -630,29 +807,13 @@ void SettingsDialog::loadHotkeySettings(void)
 
 void SettingsDialog::loadInterfaceGeneralSettings(void)
 {
-    // find stylesheets and add them to the UI
-    QString directory;
-    directory = QString::fromStdString(CoreGetSharedDataDirectory().string());
-    directory += CORE_DIR_SEPERATOR_STR;
-    directory += "Styles";
-    directory += CORE_DIR_SEPERATOR_STR;
-
-    QStringList filter;
-    filter << "*.qss";
-
-    QDirIterator stylesDirectoryIter(directory, filter, QDir::Files, QDirIterator::NoIteratorFlags);
-    while (stylesDirectoryIter.hasNext())
-    {
-        QFileInfo fileInfo(stylesDirectoryIter.next());
-        this->themeComboBox->addItem(fileInfo.fileName());
-    }
-
-#ifdef _WIN32
-    this->themeComboBox->insertItem(1,"Windows Vista");
-#endif
-
-    // select currently chosen theme in UI
-    this->themeComboBox->setCurrentText(QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme)));
+    const QList<ThemeOption> themeOptions = collectAvailableThemeOptions();
+    const QString currentTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    const bool showLegacy = isLegacyThemeValue(themeOptions, currentTheme);
+    const bool blocked = this->showLegacyThemesCheckBox->blockSignals(true);
+    this->showLegacyThemesCheckBox->setChecked(showLegacy);
+    this->showLegacyThemesCheckBox->blockSignals(blocked);
+    populateThemeCombo(this->themeComboBox, themeOptions, showLegacy, currentTheme);
     this->iconThemeComboBox->setCurrentText(QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_IconTheme)));
     this->autoStartNetplayOnStartupCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::GUI_AutoStartNetplayOnStartup));
 #ifdef UPDATER
@@ -848,10 +1009,39 @@ void SettingsDialog::loadDefaultDirectorySettings(void)
 
 void SettingsDialog::loadDefault64DDSettings(void)
 {
-    this->japaneseIPLRomLineEdit->setText(QString::fromStdString(CoreSettingsGetDefaultStringValue(SettingsID::Core_64DD_JapaneseIPL)));
-    this->americanIPLRomLineEdit->setText(QString::fromStdString(CoreSettingsGetDefaultStringValue(SettingsID::Core_64DD_AmericanIPL)));
-    this->developmentIPLRomLineEdit->setText(QString::fromStdString(CoreSettingsGetDefaultStringValue(SettingsID::Core_64DD_DevelopmentIPL)));
-    this->diskSaveTypeComboBox->setCurrentIndex(CoreSettingsGetDefaultIntValue(SettingsID::Core_64DD_SaveDiskFormat));
+    int kailleraPort = CoreSettingsGetDefaultIntValue(SettingsID::Kaillera_Port);
+    if (kailleraPort < 1 || kailleraPort > 65535)
+    {
+        kailleraPort = 27886;
+    }
+
+    QString recordsDirectoryRaw = QString::fromStdString(
+        CoreSettingsGetDefaultStringValue(SettingsID::Kaillera_RecordsDirectory));
+    if (recordsDirectoryRaw.isEmpty())
+    {
+        recordsDirectoryRaw = "records";
+    }
+
+    int recordingCapMB = CoreSettingsGetDefaultIntValue(SettingsID::Kaillera_RecordingCapMB);
+    if (recordingCapMB < 1)
+    {
+        recordingCapMB = 1;
+    }
+
+    this->kailleraRecordByDefaultCheckBox->setChecked(
+        CoreSettingsGetDefaultBoolValue(SettingsID::Kaillera_RecordingEnabled));
+    this->kailleraPortSpinBox->setValue(kailleraPort);
+    this->kailleraRecordsDirectoryLineEdit->setProperty("rawPath", recordsDirectoryRaw);
+    this->kailleraRecordsDirectoryLineEdit->setText(getDisplayDirectoryPath(recordsDirectoryRaw));
+    this->kailleraRecordsDirectoryLineEdit->setToolTip(this->kailleraRecordsDirectoryLineEdit->text());
+    this->kailleraRecordingCapEnabledCheckBox->setChecked(
+        CoreSettingsGetDefaultBoolValue(SettingsID::Kaillera_RecordingCapEnabled));
+    this->kailleraRecordingCapMBSpinBox->setValue(recordingCapMB);
+    this->updateKailleraRecordingCapControls();
+    this->kailleraFlashOnJoinCheckBox->setChecked(
+        CoreSettingsGetDefaultBoolValue(SettingsID::Kaillera_FlashOnJoin));
+    this->kailleraBeepOnJoinCheckBox->setChecked(
+        CoreSettingsGetDefaultBoolValue(SettingsID::Kaillera_BeepOnJoin));
 }
 
 void SettingsDialog::loadDefaultHotkeySettings(void)
@@ -861,7 +1051,13 @@ void SettingsDialog::loadDefaultHotkeySettings(void)
 
 void SettingsDialog::loadDefaultInterfaceGeneralSettings(void)
 {
-    this->themeComboBox->setCurrentText(QString::fromStdString(CoreSettingsGetDefaultStringValue(SettingsID::GUI_Theme)));
+    const QList<ThemeOption> themeOptions = collectAvailableThemeOptions();
+    const QString defaultTheme = QString::fromStdString(CoreSettingsGetDefaultStringValue(SettingsID::GUI_Theme));
+    const bool showLegacy = isLegacyThemeValue(themeOptions, defaultTheme);
+    const bool blocked = this->showLegacyThemesCheckBox->blockSignals(true);
+    this->showLegacyThemesCheckBox->setChecked(showLegacy);
+    this->showLegacyThemesCheckBox->blockSignals(blocked);
+    populateThemeCombo(this->themeComboBox, themeOptions, showLegacy, defaultTheme);
     this->iconThemeComboBox->setCurrentText(QString::fromStdString(CoreSettingsGetDefaultStringValue(SettingsID::GUI_IconTheme)));
     this->autoStartNetplayOnStartupCheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::GUI_AutoStartNetplayOnStartup));
 #ifdef UPDATER
@@ -1101,10 +1297,23 @@ void SettingsDialog::saveDirectorySettings(void)
 
 void SettingsDialog::save64DDSettings(void)
 {
-    CoreSettingsSetValue(SettingsID::Core_64DD_JapaneseIPL, this->japaneseIPLRomLineEdit->text().toStdString());
-    CoreSettingsSetValue(SettingsID::Core_64DD_AmericanIPL, this->americanIPLRomLineEdit->text().toStdString());
-    CoreSettingsSetValue(SettingsID::Core_64DD_DevelopmentIPL, this->developmentIPLRomLineEdit->text().toStdString());
-    CoreSettingsSetValue(SettingsID::Core_64DD_SaveDiskFormat, this->diskSaveTypeComboBox->currentIndex());
+    QString recordsDirectoryRaw = this->kailleraRecordsDirectoryLineEdit->property("rawPath").toString();
+    if (recordsDirectoryRaw.isEmpty())
+    {
+        recordsDirectoryRaw = "records";
+    }
+    std::string recordsDirectory = recordsDirectoryRaw.toStdString();
+
+    CoreSettingsSetValue(SettingsID::Kaillera_RecordingEnabled, this->kailleraRecordByDefaultCheckBox->isChecked());
+    CoreSettingsSetValue(SettingsID::Kaillera_Port, this->kailleraPortSpinBox->value());
+    CoreSettingsSetValue(SettingsID::Kaillera_RecordsDirectory, recordsDirectory);
+    CoreSettingsSetValue(SettingsID::Kaillera_RecordingCapEnabled, this->kailleraRecordingCapEnabledCheckBox->isChecked());
+    CoreSettingsSetValue(SettingsID::Kaillera_RecordingCapMB, this->kailleraRecordingCapMBSpinBox->value());
+    CoreSettingsSetValue(SettingsID::Kaillera_FlashOnJoin, this->kailleraFlashOnJoinCheckBox->isChecked());
+    CoreSettingsSetValue(SettingsID::Kaillera_BeepOnJoin, this->kailleraBeepOnJoinCheckBox->isChecked());
+
+    // Keep recording default/cap behavior in sync immediately after settings changes.
+    CoreRefreshKailleraRecordingStorageStatus();
 }
 
 void SettingsDialog::saveHotkeySettings(void)
@@ -1114,7 +1323,7 @@ void SettingsDialog::saveHotkeySettings(void)
 
 void SettingsDialog::saveInterfaceGeneralSettings(void)
 {
-    CoreSettingsSetValue(SettingsID::GUI_Theme, this->themeComboBox->currentText().toStdString());
+    CoreSettingsSetValue(SettingsID::GUI_Theme, selectedThemeValue(this->themeComboBox).toStdString());
     CoreSettingsSetValue(SettingsID::GUI_IconTheme, this->iconThemeComboBox->currentText().toStdString());
     CoreSettingsSetValue(SettingsID::GUI_AutoStartNetplayOnStartup, this->autoStartNetplayOnStartupCheckBox->isChecked());
 #ifdef UPDATER
@@ -1452,7 +1661,7 @@ void SettingsDialog::setIconsForEmulationInfoText(void)
 {
     QLabel* labels[] = {
         this->infoIconLabel_0, this->infoIconLabel_1, this->infoIconLabel_2,
-        this->infoIconLabel_3, this->infoIconLabel_4, this->infoIconLabel_5,
+        this->infoIconLabel_3, this->infoIconLabel_5,
         this->infoIconLabel_7, this->infoIconLabel_6, this->infoIconLabel_8,
         this->infoIconLabel_9
     };
@@ -1469,7 +1678,7 @@ void SettingsDialog::setIconsForEmulationInfoText(void)
 void SettingsDialog::hideEmulationInfoText(void)
 {
     QHBoxLayout *layouts[] = {this->emulationInfoLayout_0, this->emulationInfoLayout_1, 
-                                this->emulationInfoLayout_2, this->emulationInfoLayout_3,
+                                this->emulationInfoLayout_2,
                                 this->emulationInfoLayout_9};
 
     for (const auto &layout : layouts)
@@ -1480,6 +1689,15 @@ void SettingsDialog::hideEmulationInfoText(void)
             widget->hide();
         }
     }
+}
+
+void SettingsDialog::updateKailleraRecordingCapControls(void)
+{
+    const bool recordingByDefault = this->kailleraRecordByDefaultCheckBox->isChecked();
+    const bool capEnabled = this->kailleraRecordingCapEnabledCheckBox->isChecked();
+
+    this->kailleraRecordingCapEnabledCheckBox->setEnabled(recordingByDefault);
+    this->kailleraRecordingCapMBSpinBox->setEnabled(recordingByDefault && capEnabled);
 }
 
 void SettingsDialog::chooseDirectory(QLineEdit *lineEdit, QString caption)
@@ -1665,34 +1883,42 @@ void SettingsDialog::on_changeSaveSramDirButton_clicked(void)
     this->chooseDirectory(this->saveSramDirLineEdit, tr("Select Save (SRAM) Directory"));
 }
 
-void SettingsDialog::on_changeJapaneseIPLRomPathButton_clicked(void)
+void SettingsDialog::on_changeKailleraRecordsDirectoryButton_clicked(void)
 {
-    this->chooseFile(this->japaneseIPLRomLineEdit, tr("Open Japanese Retail 64DD IPL"), "IPL ROMs (*.n64)");
+    QString currentPathRaw = this->kailleraRecordsDirectoryLineEdit->property("rawPath").toString();
+    if (currentPathRaw.isEmpty())
+    {
+        currentPathRaw = "records";
+    }
+
+    QString currentPath = currentPathRaw;
+    if (!QDir(currentPath).isAbsolute())
+    {
+        currentPath = QDir::current().absoluteFilePath(currentPath);
+    }
+
+    QString dir = QFileDialog::getExistingDirectory(this, tr("Select Kaillera Records Directory"), currentPath);
+    if (dir.isEmpty())
+    {
+        return;
+    }
+
+    QString nativePath = QDir::toNativeSeparators(dir);
+    this->kailleraRecordsDirectoryLineEdit->setProperty("rawPath", nativePath);
+    this->kailleraRecordsDirectoryLineEdit->setText(nativePath);
+    this->kailleraRecordsDirectoryLineEdit->setToolTip(nativePath);
 }
 
-void SettingsDialog::on_changeAmericanIPLRomPathButton_clicked(void)
+void SettingsDialog::on_kailleraRecordByDefaultCheckBox_toggled(bool checked)
 {
-    this->chooseFile(this->americanIPLRomLineEdit, tr("Open American Retail 64DD IPL"), "IPL ROMs (*.n64)");
+    (void)checked;
+    this->updateKailleraRecordingCapControls();
 }
 
-void SettingsDialog::on_changeDevelopmentIPLRomPathButton_clicked(void)
+void SettingsDialog::on_kailleraRecordingCapEnabledCheckBox_toggled(bool checked)
 {
-    this->chooseFile(this->developmentIPLRomLineEdit, tr("Open Japanese Development 64DD IPL"), "IPL ROMs (*.n64)");
-}
-
-void SettingsDialog::on_clearJapaneseIPLRomPathButton_clicked(void)
-{
-    this->japaneseIPLRomLineEdit->clear();
-}
-
-void SettingsDialog::on_clearAmericanIPLRomPathButton_clicked(void)
-{
-    this->americanIPLRomLineEdit->clear();
-}
-
-void SettingsDialog::on_clearDevelopmentIPLRomPathButton_clicked(void)
-{
-    this->developmentIPLRomLineEdit->clear();
+    (void)checked;
+    this->updateKailleraRecordingCapControls();
 }
 
 void SettingsDialog::on_changeBackgroundColorButton_clicked(void)

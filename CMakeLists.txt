@@ -11,6 +11,7 @@ option(NETPLAY          "Enables netplay" ON)
 option(USE_CCACHE       "Enables usage of ccache when ccache has been found" ON)
 option(NO_ASM           "Disables the usage of assembly in the mupen64plus-core" OFF)
 option(USE_ANGRYLION    "Enables building angrylion-rdp-plus which uses a non-GPL compliant license" OFF)
+set(KAILLERA_APP_VERSION_OVERRIDE "" CACHE STRING "Override Kaillera app version string advertised by RMG-K (dev/testing)")
 
 project(RMG)
 
@@ -49,6 +50,11 @@ if (NOT GIT_FOUND OR NOT ${GIT_RESULT} EQUAL 0)
         message(WARNING "git failed to retrieve the current revision, falling back to VERSION file!")
     endif()
     file(STRINGS "VERSION" GIT_VERSION)
+endif()
+
+if (KAILLERA_APP_VERSION_OVERRIDE)
+    message(STATUS "Overriding app version for dev testing: ${KAILLERA_APP_VERSION_OVERRIDE}")
+    set(GIT_VERSION "${KAILLERA_APP_VERSION_OVERRIDE}")
 endif()
 
 if (USE_CCACHE)
@@ -111,6 +117,9 @@ endif()
 
 add_subdirectory(Source/3rdParty)
 add_subdirectory(Source/3rdParty/lzma)
+if (NETPLAY AND WIN32)
+    add_subdirectory(Source/n02)
+endif()
 add_subdirectory(Source/RMG-Core)
 add_subdirectory(Source/RMG)
 add_subdirectory(Source/RMG-Audio)
@@ -136,9 +145,7 @@ if (WIN32)
         COMMAND bash "${CMAKE_SOURCE_DIR}/Source/Script/BundleDependencies.sh" "${CMAKE_SOURCE_DIR}/Bin/${CMAKE_BUILD_TYPE}/RMG-K.exe" "${CMAKE_SOURCE_DIR}/Bin/${CMAKE_BUILD_TYPE}"
 	)
 
-    install(FILES ${CMAKE_SOURCE_DIR}/Data/kailleraclient.dll
-        DESTINATION ${RMG_INSTALL_PATH}
-    )
+    # kailleraclient.dll no longer needed - n02 is statically linked
 endif(WIN32)
 
 set(LIB_PERMISSIONS OWNER_READ OWNER_EXECUTE OWNER_WRITE

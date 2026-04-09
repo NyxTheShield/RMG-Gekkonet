@@ -37,7 +37,7 @@ enum class GCInput : int
     Count
 };
 
-#define N64_BUTTON_COUNT 14
+#define N64_BUTTON_COUNT 15
 
 struct GCButtonMapping
 {
@@ -45,6 +45,7 @@ struct GCButtonMapping
     GCInput B       = GCInput::B;
     GCInput Start   = GCInput::Start;
     GCInput Z       = GCInput::Z;
+    GCInput Z2      = GCInput::None;
     GCInput L       = GCInput::LeftTrigger;
     GCInput R       = GCInput::RightTrigger;
     GCInput DpadUp    = GCInput::DpadUp;

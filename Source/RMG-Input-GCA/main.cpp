@@ -288,6 +288,7 @@ static void load_settings(void)
     l_Settings.Mapping.B       = static_cast<GCInput>(CoreSettingsGetIntValue(SettingsID::GCAInput_Map_B));
     l_Settings.Mapping.Start   = static_cast<GCInput>(CoreSettingsGetIntValue(SettingsID::GCAInput_Map_Start));
     l_Settings.Mapping.Z       = static_cast<GCInput>(CoreSettingsGetIntValue(SettingsID::GCAInput_Map_Z));
+    l_Settings.Mapping.Z2      = static_cast<GCInput>(CoreSettingsGetIntValue(SettingsID::GCAInput_Map_Z2));
     l_Settings.Mapping.L       = static_cast<GCInput>(CoreSettingsGetIntValue(SettingsID::GCAInput_Map_L));
     l_Settings.Mapping.R       = static_cast<GCInput>(CoreSettingsGetIntValue(SettingsID::GCAInput_Map_R));
     l_Settings.Mapping.DpadUp    = static_cast<GCInput>(CoreSettingsGetIntValue(SettingsID::GCAInput_Map_DpadUp));
@@ -487,7 +488,8 @@ EXPORT void CALL GetKeys(int Control, BUTTONS* Keys)
     Keys->A_BUTTON     = isGCInputActive(state, map.A, trigT, cT);
     Keys->B_BUTTON     = isGCInputActive(state, map.B, trigT, cT);
     Keys->START_BUTTON = isGCInputActive(state, map.Start, trigT, cT);
-    Keys->Z_TRIG       = isGCInputActive(state, map.Z, trigT, cT);
+    Keys->Z_TRIG       = isGCInputActive(state, map.Z, trigT, cT) ||
+                         (map.Z2 != GCInput::None && isGCInputActive(state, map.Z2, trigT, cT));
     Keys->L_TRIG       = isGCInputActive(state, map.L, trigT, cT);
     Keys->R_TRIG       = isGCInputActive(state, map.R, trigT, cT);
     Keys->U_DPAD       = isGCInputActive(state, map.DpadUp, trigT, cT);

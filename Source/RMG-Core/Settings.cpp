@@ -72,6 +72,7 @@ static bool l_InputPluginSwitchRequested = false;
 #define SETTING_SECTION_AUDIO       SETTING_SECTION_GUI  " - Audio Plugin"
 #define SETTING_SECTION_INPUT       SETTING_SECTION_GUI  " - Input Plugin"
 #define SETTING_SECTION_GCA         SETTING_SECTION_GUI  " - GameCube Adapter Input Plugin"
+#define SETTING_SECTION_KAILLERA    SETTING_SECTION_GUI  " Kaillera"
 #define SETTING_SECTION_RSP         "Rsp-HLE"
 
 // retrieves l_Setting from settingId
@@ -170,7 +171,7 @@ static l_Setting get_setting(SettingsID settingId)
         setting = {SETTING_SECTION_GUI, "StatusBar", true};
         break;
     case SettingsID::GUI_Theme:
-        setting = {SETTING_SECTION_GUI, "Theme", std::string("Native")};
+        setting = {SETTING_SECTION_GUI, "Theme", std::string("Modern")};
         break;
     case SettingsID::GUI_IconTheme:
         setting = {SETTING_SECTION_GUI, "IconTheme", std::string("Automatic")};
@@ -202,6 +203,121 @@ static l_Setting get_setting(SettingsID settingId)
         break;
     case SettingsID::Netplay_SelectedServer:
         setting = {SETTING_SECTION_NETPLAY, "SelectedServer", std::string("")};
+        break;
+
+    case SettingsID::Kaillera_ActiveMode:
+        setting = {SETTING_SECTION_KAILLERA, "ActiveMode", 1}; // 0=P2P, 1=Server, 2=Playback
+        break;
+    case SettingsID::Kaillera_Username:
+        setting = {SETTING_SECTION_KAILLERA, "Username", std::string("Player")};
+        break;
+    case SettingsID::Kaillera_Port:
+        setting = {SETTING_SECTION_KAILLERA, "Port", 27886};
+        break;
+    case SettingsID::Kaillera_FrameDelay:
+        setting = {SETTING_SECTION_KAILLERA, "FrameDelay", 0}; // 0=server decides
+        break;
+    case SettingsID::Kaillera_ConnectionSetting:
+        setting = {SETTING_SECTION_KAILLERA, "ConnectionSetting", 1}; // 1=LAN, 2=Good, 3=Average, 4=Low, 6=Bad
+        break;
+    case SettingsID::Kaillera_RecordingEnabled:
+        setting = {SETTING_SECTION_KAILLERA, "RecordingEnabled", false};
+        break;
+    case SettingsID::Kaillera_RecordsDirectory:
+        setting = {SETTING_SECTION_KAILLERA, "RecordsDirectory", std::string("records")};
+        break;
+    case SettingsID::Kaillera_RecordingCapEnabled:
+        setting = {SETTING_SECTION_KAILLERA, "RecordingCapEnabled", true};
+        break;
+    case SettingsID::Kaillera_RecordingCapMB:
+        setting = {SETTING_SECTION_KAILLERA, "RecordingCapMB", 1024};
+        break;
+    case SettingsID::Kaillera_SpoofPing:
+        setting = {SETTING_SECTION_KAILLERA, "SpoofPing", 0}; // 0=disabled, >0=spoof ping in ms
+        break;
+    case SettingsID::Kaillera_30fpsMode:
+        setting = {SETTING_SECTION_KAILLERA, "30fpsMode", false};
+        break;
+    case SettingsID::Kaillera_MaxPlayers:
+        setting = {SETTING_SECTION_KAILLERA, "MaxPlayers", 4};
+        break;
+    case SettingsID::Kaillera_MaxPing:
+        setting = {SETTING_SECTION_KAILLERA, "MaxPing", 999};
+        break;
+    case SettingsID::Kaillera_FlashOnJoin:
+        setting = {SETTING_SECTION_KAILLERA, "FlashOnJoin", false};
+        break;
+    case SettingsID::Kaillera_BeepOnJoin:
+        setting = {SETTING_SECTION_KAILLERA, "BeepOnJoin", true};
+        break;
+    case SettingsID::Kaillera_JoinMessageHost:
+        setting = {SETTING_SECTION_KAILLERA, "JoinMessageHost", std::string("")};
+        break;
+    case SettingsID::Kaillera_JoinMessageJoin:
+        setting = {SETTING_SECTION_KAILLERA, "JoinMessageJoin", std::string("")};
+        break;
+    case SettingsID::Kaillera_P2PStaticCode:
+        setting = {SETTING_SECTION_KAILLERA, "P2PStaticCode", std::string("")};
+        break;
+    case SettingsID::Kaillera_P2PStaticCodeOwnerToken:
+        setting = {SETTING_SECTION_KAILLERA, "P2PStaticCodeOwnerToken", std::string("")};
+        break;
+    case SettingsID::Kaillera_ServerListNames:
+        setting = {SETTING_SECTION_KAILLERA, "ServerListNames", std::string("")};
+        break;
+    case SettingsID::Kaillera_ServerListHosts:
+        setting = {SETTING_SECTION_KAILLERA, "ServerListHosts", std::string("")};
+        break;
+    case SettingsID::Kaillera_ServerListCountries:
+        setting = {SETTING_SECTION_KAILLERA, "ServerListCountries", std::string("")};
+        break;
+    case SettingsID::Kaillera_ServerListPings:
+        setting = {SETTING_SECTION_KAILLERA, "ServerListPings", std::string("")};
+        break;
+    case SettingsID::Kaillera_ServerListPingValues:
+        setting = {SETTING_SECTION_KAILLERA, "ServerListPingValues", std::string("")};
+        break;
+    case SettingsID::Kaillera_LiveServerCacheNames:
+        setting = {SETTING_SECTION_KAILLERA, "LiveServerCacheNames", std::string("")};
+        break;
+    case SettingsID::Kaillera_LiveServerCacheHosts:
+        setting = {SETTING_SECTION_KAILLERA, "LiveServerCacheHosts", std::string("")};
+        break;
+    case SettingsID::Kaillera_LiveServerCacheCountries:
+        setting = {SETTING_SECTION_KAILLERA, "LiveServerCacheCountries", std::string("")};
+        break;
+    case SettingsID::Kaillera_LiveServerCachePings:
+        setting = {SETTING_SECTION_KAILLERA, "LiveServerCachePings", std::string("")};
+        break;
+    case SettingsID::Kaillera_LiveServerCachePingValues:
+        setting = {SETTING_SECTION_KAILLERA, "LiveServerCachePingValues", std::string("")};
+        break;
+    case SettingsID::Kaillera_BrowserGeometry:
+        setting = {SETTING_SECTION_KAILLERA, "BrowserGeometry", std::string("")};
+        break;
+    case SettingsID::Kaillera_BrowserTopSplitter:
+        setting = {SETTING_SECTION_KAILLERA, "BrowserTopSplitter", std::string("")};
+        break;
+    case SettingsID::Kaillera_BrowserBottomSplitter:
+        setting = {SETTING_SECTION_KAILLERA, "BrowserBottomSplitter", std::string("")};
+        break;
+    case SettingsID::Kaillera_NetplayGeometry:
+        setting = {SETTING_SECTION_KAILLERA, "NetplayGeometry", std::string("")};
+        break;
+    case SettingsID::Kaillera_ServerColumnWidths:
+        setting = {SETTING_SECTION_KAILLERA, "ServerColumnWidths", std::string("")};
+        break;
+    case SettingsID::Kaillera_UserColumnWidths:
+        setting = {SETTING_SECTION_KAILLERA, "UserColumnWidths", std::string("")};
+        break;
+    case SettingsID::Kaillera_GameColumnWidths:
+        setting = {SETTING_SECTION_KAILLERA, "GameColumnWidths", std::string("")};
+        break;
+    case SettingsID::Kaillera_PlayerColumnWidths:
+        setting = {SETTING_SECTION_KAILLERA, "PlayerColumnWidths", std::string("")};
+        break;
+    case SettingsID::Kaillera_P2PLastGame:
+        setting = {SETTING_SECTION_KAILLERA, "P2PLastGame", std::string("")};
         break;
 
     case SettingsID::Core_GFX_Plugin:
@@ -885,6 +1001,18 @@ static l_Setting get_setting(SettingsID settingId)
     case SettingsID::Input_ZTrigger_ExtraData:
         setting = {"", "ZTrigger_ExtraData"};
         break;
+    case SettingsID::Input_ZTrigger2_InputType:
+        setting = {"", "ZTrigger2_InputType"};
+        break;
+    case SettingsID::Input_ZTrigger2_Name:
+        setting = {"", "ZTrigger2_Name"};
+        break;
+    case SettingsID::Input_ZTrigger2_Data:
+        setting = {"", "ZTrigger2_Data"};
+        break;
+    case SettingsID::Input_ZTrigger2_ExtraData:
+        setting = {"", "ZTrigger2_ExtraData"};
+        break;
     case SettingsID::Input_AnalogStickUp_InputType:
         setting = {"", "AnalogStickUp_InputType"};
         break;
@@ -1429,6 +1557,9 @@ static l_Setting get_setting(SettingsID settingId)
         break;
     case SettingsID::GCAInput_Map_Z:
         setting = {SETTING_SECTION_GCA, "Map_Z", 4};
+        break;
+    case SettingsID::GCAInput_Map_Z2:
+        setting = {SETTING_SECTION_GCA, "Map_Z2", -1};
         break;
     case SettingsID::GCAInput_Map_L:
         setting = {SETTING_SECTION_GCA, "Map_L", 12};
