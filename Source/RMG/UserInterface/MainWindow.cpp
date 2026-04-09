@@ -114,6 +114,14 @@ public:
         {
             return;
         }
+        // Suppress the raised panel/border on toolbar buttons when not hovered/pressed
+        if (element == PE_PanelButtonTool)
+        {
+            if (!(option->state & (State_MouseOver | State_Sunken)))
+            {
+                return;
+            }
+        }
         QProxyStyle::drawPrimitive(element, option, painter, widget);
     }
 
@@ -668,6 +676,7 @@ void MainWindow::configureTheme(QApplication* app)
         }
         app->setPalette(defaultPalette);
     }
+
 #ifdef _WIN32
     else if (theme == "Windows Vista")
     {
