@@ -136,17 +136,6 @@ public:
             QProxyStyle::drawControl(element, &opt, painter, widget);
             return;
         }
-        // Strip the raised state from toolbar buttons so they appear flat
-        if (element == CE_ToolButtonStyle)
-        {
-            QStyleOptionToolButton opt(*qstyleoption_cast<const QStyleOptionToolButton*>(option));
-            if (!(opt.state & (State_MouseOver | State_Sunken)))
-            {
-                opt.state &= ~State_Raised;
-            }
-            QProxyStyle::drawControl(element, &opt, painter, widget);
-            return;
-        }
         QProxyStyle::drawControl(element, option, painter, widget);
     }
 };
