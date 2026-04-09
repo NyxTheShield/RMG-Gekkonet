@@ -648,7 +648,10 @@ void MainWindow::configureTheme(QApplication* app)
     QString fallbackThemeName = defaultFallbackThemeName;
 
     // set theme style
-    QString fallbackStyleSheet = "QTableView { border: none; color: #0096d3; selection-color: #FFFFFF; selection-background-color: #0096d3; }";
+    QString fallbackStyleSheet = "QTableView { border: none; color: #0096d3; selection-color: #FFFFFF; selection-background-color: #0096d3; }"
+                                 " QToolBar QToolButton { border: none; background: transparent; padding: 4px; }"
+                                 " QToolBar QToolButton:hover { background: rgba(128, 128, 128, 40); border-radius: 4px; }"
+                                 " QToolBar QToolButton:pressed { background: rgba(128, 128, 128, 80); border-radius: 4px; }";
     this->setStyleSheet(fallbackStyleSheet);
 
     app->setStyleSheet(defaultStyleSheet);
