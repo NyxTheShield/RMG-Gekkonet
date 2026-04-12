@@ -85,6 +85,8 @@ private:
     void pingAllServers();
     void startNextServerPing();
     void pollServerPing();
+    void stopServerPingQueue();
+    void waitForActiveServerPing(bool applyResult);
     QVector<ServerEntry> parseLiveServerList(const QByteArray& data) const;
     int favoriteServerIndexByHost(const QString& host) const;
     int cachedServerIndexByHost(const QString& host) const;
@@ -168,6 +170,7 @@ private:
     bool m_serverListNeedsRefresh = false;
     bool m_pingAllQueued = false;
     bool m_pingAllInProgress = false;
+    bool m_serverPingsSuspended = false;
     QTimer* m_p2pCopyFeedbackTimer = nullptr;
     QTimer* m_p2pCodeStatusTimer = nullptr;
     QUdpSocket* m_p2pAutoClaimSocket = nullptr;

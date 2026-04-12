@@ -31,6 +31,7 @@ bool kaillera_is_connected();
 bool kaillera_core_initialize(int port, char * appname, char * username, char connection_setting);
 void kaillera_set_spoof_ping(int spoof_ping_ms);  // Call before connect: 0=auto, >0=spoof ping in ms
 bool kaillera_core_connect(char * ip, int port = 27888);
+bool kaillera_core_finish_login(int timeout_ms);
 const char* kaillera_core_get_last_error();
 bool kaillera_disconnect(char * quitmsg);
 bool kaillera_core_cleanup();

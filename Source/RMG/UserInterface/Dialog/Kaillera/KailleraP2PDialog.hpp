@@ -103,6 +103,7 @@ private:
     QPushButton* m_btnDrop = nullptr;
     QCheckBox* m_recordCheck = nullptr;
     QCheckBox* m_enlistCheck = nullptr;
+    QLabel* m_pingLabel = nullptr;
 
     // Host group
     QGroupBox* m_hostGroup = nullptr;

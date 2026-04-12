@@ -202,7 +202,6 @@ CORE_EXPORT bool CoreInitKaillera(void)
 
     kaillera_spoof_ping = CoreSettingsGetIntValue(SettingsID::Kaillera_SpoofPing);
     kaillera_30fps_mode = CoreSettingsGetBoolValue(SettingsID::Kaillera_30fpsMode) ? 1 : 0;
-    p2p_frame_delay_override = CoreSettingsGetIntValue(SettingsID::Kaillera_FrameDelay);
     p2p_30fps_mode = CoreSettingsGetBoolValue(SettingsID::Kaillera_30fpsMode) ? 1 : 0;
     n02::setRecordsDirectory(CoreGetKailleraRecordsDirectory());
 

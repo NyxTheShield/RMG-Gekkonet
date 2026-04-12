@@ -75,6 +75,11 @@ static QString buildP2PStyleSheet(const QString& theme)
         "  padding: 6px 10px;"
         "  font-weight: 500;"
         "}"
+        "QLabel#KailleraP2PStatusLabel {"
+        "  color: palette(text);"
+        "  padding: 0 2px;"
+        "  font-weight: 600;"
+        "}"
         "QTextBrowser#KailleraP2PSurface {"
         "  border: 1px solid palette(mid);"
         "  border-radius: 10px;"
@@ -503,7 +508,7 @@ void KailleraP2PDialog::setupUI()
     // Left side: buttons
     auto* leftWidget = new QWidget(this);
     auto* leftLayout = new QVBoxLayout(leftWidget);
-    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setContentsMargins(0, m_isHost ? 12 : 0, 0, 0);
     leftLayout->setSpacing(0);
 
     auto* btnRow = new QHBoxLayout();
@@ -537,7 +542,6 @@ void KailleraP2PDialog::setupUI()
     {
         m_hostGroup = new QGroupBox("Host:", this);
         m_hostGroup->setObjectName("KailleraP2PGroup");
-        m_hostGroup->setMinimumWidth(200);
         auto* hostLayout = new QVBoxLayout(m_hostGroup);
         hostLayout->setContentsMargins(9, 7, 9, 9);
         hostLayout->setSpacing(8);
@@ -545,17 +549,38 @@ void KailleraP2PDialog::setupUI()
         auto* fdlyLayout = new QHBoxLayout();
         fdlyLayout->setContentsMargins(0, 0, 0, 0);
         fdlyLayout->setSpacing(6);
-        fdlyLayout->addWidget(new QLabel("Frame Delay:", m_hostGroup));
+        auto* frameDelayLabel = new QLabel("Frame Delay:", m_hostGroup);
+        fdlyLayout->addWidget(frameDelayLabel);
         m_frameDelayCombo = new QComboBox(m_hostGroup);
         m_frameDelayCombo->setObjectName("KailleraP2PCombo");
+        m_frameDelayCombo->setMinimumWidth(140);
+        m_frameDelayCombo->setSizeAdjustPolicy(QComboBox::AdjustToContentsOnFirstShow);
         configureP2PComboPopup(m_frameDelayCombo, theme);
         m_frameDelayCombo->addItem("Auto");
-        for (int i = 1; i <= 9; i++)
-        {
-            m_frameDelayCombo->addItem(QString::number(i));
-        }
+        m_frameDelayCombo->addItem("1 frame (0-33ms)");
+        m_frameDelayCombo->addItem("2 frames (34-67ms)");
+        m_frameDelayCombo->addItem("3 frames (68-99ms)");
+        m_frameDelayCombo->addItem("4 frames (100-133ms)");
+        m_frameDelayCombo->addItem("5 frames (134-167ms)");
+        m_frameDelayCombo->addItem("6 frames (168-199ms)");
+        m_frameDelayCombo->addItem("7 frames (200-233ms)");
+        m_frameDelayCombo->addItem("8 frames (234-267ms)");
+        m_frameDelayCombo->addItem("9 frames (268+ms)");
+        KailleraUIBridge::instance().setSelectedDelay(m_frameDelayCombo->currentIndex());
+        connect(m_frameDelayCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [](int index) {
+            KailleraUIBridge::instance().setSelectedDelay(index);
+        });
         fdlyLayout->addWidget(m_frameDelayCombo);
         hostLayout->addLayout(fdlyLayout);
+
+        const QMargins hostMargins = hostLayout->contentsMargins();
+        const int hostMinWidth =
+            hostMargins.left() +
+            frameDelayLabel->sizeHint().width() +
+            fdlyLayout->spacing() +
+            m_frameDelayCombo->minimumWidth() +
+            hostMargins.right();
+        m_hostGroup->setMinimumWidth(hostMinWidth);
 
         hostLayout->addWidget(new QLabel("Connect code:", m_hostGroup));
 
@@ -586,6 +611,15 @@ void KailleraP2PDialog::setupUI()
     }
 
     mainLayout->addLayout(bottomLayout);
+
+    auto* statusLayout = new QHBoxLayout();
+    statusLayout->setContentsMargins(0, 0, 0, 0);
+    statusLayout->setSpacing(0);
+    m_pingLabel = new QLabel("Ping: -- ms", this);
+    m_pingLabel->setObjectName("KailleraP2PStatusLabel");
+    statusLayout->addWidget(m_pingLabel, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    statusLayout->addStretch();
+    mainLayout->addLayout(statusLayout);
 
     // Connect button actions
     connect(m_btnChat, &QPushButton::clicked, this, &KailleraP2PDialog::onSendChat);
@@ -1192,6 +1226,7 @@ void KailleraP2PDialog::onGameEnded()
 void KailleraP2PDialog::onClientDropped(QString nick, int player)
 {
     (void)player;
+    if (m_pingLabel) m_pingLabel->setText("Ping: -- ms");
     m_chat->append("<span style='color:red;'>" + timestamp() + nick.toHtmlEscaped() + " dropped.</span>");
 }
 
@@ -1202,11 +1237,24 @@ void KailleraP2PDialog::onDebug(QString message)
 
 void KailleraP2PDialog::onPingUpdated(int ping)
 {
-    (void)ping;
+    if (!m_pingLabel)
+    {
+        return;
+    }
+
+    if (ping >= 0)
+    {
+        m_pingLabel->setText(QString("Ping: %1 ms").arg(ping));
+    }
+    else
+    {
+        m_pingLabel->setText("Ping: -- ms");
+    }
 }
 
 void KailleraP2PDialog::onPeerJoined()
 {
+    if (m_pingLabel) m_pingLabel->setText("Ping: measuring...");
     m_chat->append("<span style='color:green;'>" + timestamp() + "Peer connected.</span>");
     m_travHostPeerIp.clear();
     m_travHostPeerPort = 0;
@@ -1233,6 +1281,7 @@ void KailleraP2PDialog::onPeerJoined()
 
 void KailleraP2PDialog::onPeerLeft()
 {
+    if (m_pingLabel) m_pingLabel->setText("Ping: -- ms");
     m_chat->append("<span style='color:red;'>" + timestamp() + "Peer disconnected.</span>");
     m_ready = false;
     if (m_btnReady) m_btnReady->setChecked(false);
@@ -1290,12 +1339,6 @@ void KailleraP2PDialog::onSendChat()
 void KailleraP2PDialog::onReady()
 {
     m_ready = (m_btnReady != nullptr) ? m_btnReady->isChecked() : !m_ready;
-
-    // Update the selected delay in UIBridge before setting ready
-    if (m_isHost && m_frameDelayCombo)
-    {
-        KailleraUIBridge::instance().setSelectedDelay(m_frameDelayCombo->currentIndex());
-    }
 
     p2p_set_ready(m_ready);
 
@@ -1363,6 +1406,13 @@ void KailleraP2PDialog::onTravTimer()
 {
     qint64 now = QDateTime::currentMSecsSinceEpoch();
     m_travTimerStep++;
+
+    // Match the old p2p lobby behavior: keep refreshing ping once per second
+    // while connected, but stop once the game has actually started.
+    if (!n02::isGameRunning() && p2p_is_connected())
+    {
+        p2p_ping();
+    }
 
     // ---- HOST: NAT traversal registration & keepalive ----
     if (m_isHost && m_travHostEnabled)
