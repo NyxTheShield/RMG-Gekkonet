@@ -468,6 +468,7 @@ void KailleraP2PDialog::setupUI()
     m_chat = new QTextBrowser(this);
     m_chat->setObjectName("KailleraP2PSurface");
     m_chat->setOpenExternalLinks(true);
+    m_chat->document()->setMaximumBlockCount(1000);
     mainLayout->addWidget(m_chat, 1);
 
     // Chat input row

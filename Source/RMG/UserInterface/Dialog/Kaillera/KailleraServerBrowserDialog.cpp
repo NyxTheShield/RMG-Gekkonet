@@ -985,6 +985,7 @@ void KailleraServerBrowserDialog::setupUI()
     m_lobbyChat->setObjectName("KailleraSurface");
     m_lobbyChat->setReadOnly(true);
     m_lobbyChat->setOpenExternalLinks(true);
+    m_lobbyChat->document()->setMaximumBlockCount(2000);
     lobbyBodyLayout->addWidget(m_lobbyChat);
 
     auto* lobbyComposer = new QWidget(lobbyBody);
@@ -1075,6 +1076,7 @@ void KailleraServerBrowserDialog::setupUI()
     m_userTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
     m_userTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Interactive);
     m_userTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+    m_userTable->verticalHeader()->setDefaultSectionSize(24);
     m_userTable->verticalHeader()->setVisible(false);
     m_userTable->setShowGrid(false);
     m_userTable->setAlternatingRowColors(true);
@@ -1287,6 +1289,7 @@ QWidget* KailleraServerBrowserDialog::createGameRoomWidget()
     m_gameChat->setObjectName("KailleraSurface");
     m_gameChat->setReadOnly(true);
     m_gameChat->setOpenExternalLinks(true);
+    m_gameChat->document()->setMaximumBlockCount(1000);
     chatVBox->addWidget(m_gameChat);
 
     // Game chat input + send
