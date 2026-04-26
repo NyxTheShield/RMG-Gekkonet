@@ -319,6 +319,12 @@ static l_Setting get_setting(SettingsID settingId)
     case SettingsID::Kaillera_P2PLastGame:
         setting = {SETTING_SECTION_KAILLERA, "P2PLastGame", std::string("")};
         break;
+    case SettingsID::Kaillera_FfmpegPath:
+        setting = {SETTING_SECTION_KAILLERA, "FfmpegPath", std::string("")};
+        break;
+    case SettingsID::Kaillera_ExportLabelPorts:
+        setting = {SETTING_SECTION_KAILLERA, "ExportLabelPorts", true};
+        break;
 
     case SettingsID::Core_GFX_Plugin:
         setting = {SETTING_SECTION_CORE, "GFX_Plugin", 

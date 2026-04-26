@@ -3,7 +3,9 @@
 #include "PifReplay.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cctype>
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
@@ -27,6 +29,7 @@ enum class EncodeSlotState
 };
 
 static constexpr int kEncodeSlotCount = 2;
+static constexpr std::array<int, 4> kPortLabelCenterOffset720p = { 19, 0, -19, -70 };
 
 static EmulatorProxy* s_Emulator = nullptr;
 static FfmpegEncoder* s_Encoder = nullptr;
@@ -63,6 +66,215 @@ static std::thread s_EncodeThread;
 static std::mutex s_EncodeMutex;
 static std::condition_variable s_EncodeWorkCv;
 static std::condition_variable s_EncodeSpaceCv;
+static PortLabelConfig s_PortLabelConfig;
+
+using GlyphRows = std::array<uint8_t, 7>;
+
+static GlyphRows glyphForChar(char c)
+{
+    switch (static_cast<char>(std::toupper(static_cast<unsigned char>(c))))
+    {
+    case 'A': return {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11};
+    case 'B': return {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E};
+    case 'C': return {0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E};
+    case 'D': return {0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E};
+    case 'E': return {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F};
+    case 'F': return {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10};
+    case 'G': return {0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F};
+    case 'H': return {0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11};
+    case 'I': return {0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E};
+    case 'J': return {0x01, 0x01, 0x01, 0x01, 0x11, 0x11, 0x0E};
+    case 'K': return {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11};
+    case 'L': return {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F};
+    case 'M': return {0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11};
+    case 'N': return {0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11};
+    case 'O': return {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E};
+    case 'P': return {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10};
+    case 'Q': return {0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D};
+    case 'R': return {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11};
+    case 'S': return {0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E};
+    case 'T': return {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04};
+    case 'U': return {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E};
+    case 'V': return {0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04};
+    case 'W': return {0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A};
+    case 'X': return {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11};
+    case 'Y': return {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04};
+    case 'Z': return {0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F};
+    case '0': return {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E};
+    case '1': return {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E};
+    case '2': return {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F};
+    case '3': return {0x1E, 0x01, 0x01, 0x0E, 0x01, 0x01, 0x1E};
+    case '4': return {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02};
+    case '5': return {0x1F, 0x10, 0x10, 0x1E, 0x01, 0x01, 0x1E};
+    case '6': return {0x0E, 0x10, 0x10, 0x1E, 0x11, 0x11, 0x0E};
+    case '7': return {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08};
+    case '8': return {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E};
+    case '9': return {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x01, 0x0E};
+    case '-': return {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00};
+    case '_': return {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F};
+    case '.': return {0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C};
+    case ':': return {0x00, 0x0C, 0x0C, 0x00, 0x0C, 0x0C, 0x00};
+    case ' ': return {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    default: return {0x1F, 0x01, 0x02, 0x04, 0x04, 0x00, 0x04};
+    }
+}
+
+static void blendPixel(uint8_t* rgb, uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha)
+{
+    const int inverseAlpha = 255 - alpha;
+    rgb[0] = static_cast<uint8_t>((rgb[0] * inverseAlpha + red * alpha) / 255);
+    rgb[1] = static_cast<uint8_t>((rgb[1] * inverseAlpha + green * alpha) / 255);
+    rgb[2] = static_cast<uint8_t>((rgb[2] * inverseAlpha + blue * alpha) / 255);
+}
+
+static void fillRect(uint8_t* frame,
+                     int width,
+                     int height,
+                     int x,
+                     int y,
+                     int rectWidth,
+                     int rectHeight,
+                     uint8_t red,
+                     uint8_t green,
+                     uint8_t blue,
+                     uint8_t alpha)
+{
+    const int startX = std::clamp(x, 0, width);
+    const int startY = std::clamp(y, 0, height);
+    const int endX = std::clamp(x + rectWidth, 0, width);
+    const int endY = std::clamp(y + rectHeight, 0, height);
+
+    for (int py = startY; py < endY; ++py)
+    {
+        for (int px = startX; px < endX; ++px)
+        {
+            blendPixel(frame + (static_cast<size_t>(py) * width + px) * 3U, red, green, blue, alpha);
+        }
+    }
+}
+
+static int textWidth(const std::string& text, int scale)
+{
+    if (text.empty())
+    {
+        return 0;
+    }
+    return static_cast<int>(text.size()) * 6 * scale - scale;
+}
+
+static void drawText(uint8_t* frame,
+                     int width,
+                     int height,
+                     int x,
+                     int y,
+                     const std::string& text,
+                     int scale,
+                     uint8_t red,
+                     uint8_t green,
+                     uint8_t blue)
+{
+    int cursorX = x;
+    for (char c : text)
+    {
+        const GlyphRows glyph = glyphForChar(c);
+        for (int row = 0; row < 7; ++row)
+        {
+            for (int col = 0; col < 5; ++col)
+            {
+                if ((glyph[static_cast<size_t>(row)] & (1U << (4 - col))) == 0)
+                {
+                    continue;
+                }
+                fillRect(frame, width, height, cursorX + col * scale, y + row * scale,
+                         scale, scale, red, green, blue, 255);
+            }
+        }
+        cursorX += 6 * scale;
+    }
+}
+
+static std::string normalizedLabelName(const std::string& name, int playerIndex)
+{
+    std::string label = name.empty()
+        ? ("P" + std::to_string(playerIndex + 1))
+        : name;
+
+    for (char& c : label)
+    {
+        if (static_cast<unsigned char>(c) < 32)
+        {
+            c = ' ';
+        }
+    }
+    return label;
+}
+
+static int scaledPortLabelOffset(int playerIndex, int height)
+{
+    if (playerIndex < 0 || playerIndex >= static_cast<int>(kPortLabelCenterOffset720p.size()))
+    {
+        return 0;
+    }
+
+    const int offset = kPortLabelCenterOffset720p[static_cast<size_t>(playerIndex)];
+    if (offset >= 0)
+    {
+        return (offset * height + 360) / 720;
+    }
+
+    return -((-offset * height + 360) / 720);
+}
+
+static int chooseLabelTextScale(const std::string& label, int normalScale, int maxTextWidth)
+{
+    const int compactScale = std::max(1, normalScale - 1);
+    if (textWidth(label, normalScale) <= maxTextWidth || compactScale == normalScale)
+    {
+        return normalScale;
+    }
+
+    return compactScale;
+}
+
+static void truncateLabelToFit(std::string& label, int scale, int maxTextWidth)
+{
+    const size_t maxChars = std::max<size_t>(1, static_cast<size_t>((maxTextWidth + scale) / (6 * scale)));
+    if (label.size() > maxChars)
+    {
+        label.resize(maxChars);
+    }
+}
+
+static void drawPortLabels(uint8_t* frame, int width, int height)
+{
+    if (!s_PortLabelConfig.enabled || s_PortLabelConfig.playerCount <= 0)
+    {
+        return;
+    }
+
+    const int playerCount = std::clamp(s_PortLabelConfig.playerCount, 1, 4);
+    const int scale = std::max(2, height / 240);
+    const int labelHeight = 15 * scale;
+    const int labelY = std::max(0, height - labelHeight - 4 * scale);
+
+    for (int i = 0; i < playerCount; ++i)
+    {
+        std::string label = normalizedLabelName(s_PortLabelConfig.playerNames[static_cast<size_t>(i)], i);
+        const int portWidth = width / 4;
+        const int portCenterX = portWidth * i + portWidth / 2 + scaledPortLabelOffset(i, height);
+        const int maxTextWidth = std::max(scale, portWidth - 8 * scale);
+        const int textScale = chooseLabelTextScale(label, scale, maxTextWidth);
+        truncateLabelToFit(label, textScale, maxTextWidth);
+
+        const int labelWidth = std::min(portWidth - 4 * scale, textWidth(label, textScale) + 8 * scale);
+        const int labelX = std::clamp(portCenterX - labelWidth / 2, 0, std::max(0, width - labelWidth));
+        fillRect(frame, width, height, labelX, labelY, labelWidth, labelHeight, 0, 0, 0, 170);
+
+        const int textX = labelX + std::max(0, (labelWidth - textWidth(label, textScale)) / 2);
+        const int textY = labelY + std::max(0, (labelHeight - 7 * textScale) / 2);
+        drawText(frame, width, height, textX, textY, label, textScale, 255, 255, 255);
+    }
+}
 
 static bool allSlotsIdleLocked()
 {
@@ -311,6 +523,8 @@ static void EncodeWorkerMain()
                    static_cast<size_t>(stride));
         }
 
+        drawPortLabels(s_FlippedBuffer.data(), width, height);
+
         std::string errorMessage;
         if (!s_Encoder->writeFrame(s_FlippedBuffer.data(), width, height, &errorMessage))
         {
@@ -386,7 +600,8 @@ static void stopEncodeThread()
 void InitializeFrameCapture(EmulatorProxy* emulator,
                             FfmpegEncoder* encoder,
                             const FfmpegEncoderConfig& encoderConfig,
-                            int expectedFrameCount)
+                            int expectedFrameCount,
+                            const PortLabelConfig& portLabelConfig)
 {
     s_Emulator = emulator;
     s_Encoder = encoder;
@@ -412,6 +627,7 @@ void InitializeFrameCapture(EmulatorProxy* emulator,
     s_QueueHead = 0;
     s_QueueTail = 0;
     s_QueueCount = 0;
+    s_PortLabelConfig = portLabelConfig;
     for (int i = 0; i < kEncodeSlotCount; ++i)
     {
         s_SlotStates[i] = EncodeSlotState::Free;

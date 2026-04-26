@@ -10,13 +10,17 @@
 #include "KailleraPlaybackDialog.hpp"
 #include "KailleraTableStyle.hpp"
 #include "UserInterface/MainWindow.hpp"
+#include "Utilities/KailleraExport/FfmpegEncoder.hpp"
 #include "Utilities/KailleraExport/KrecParser.hpp"
 
 #ifdef _WIN32
 
+#include <RMG-Core/Archive.hpp>
+#include <RMG-Core/Directories.hpp>
 #include <RMG-Core/Settings.hpp>
 #include <RMG-Core/Kaillera.hpp>
 #include <RMG-Core/Emulation.hpp>
+#include <RMG-Core/Error.hpp>
 
 #include "n02_client.h"
 
@@ -33,12 +37,36 @@
 #include <QCoreApplication>
 #include <QProgressBar>
 #include <QRegularExpression>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QEventLoop>
+#include <QCryptographicHash>
+#include <QFile>
+#include <QStandardPaths>
+#include <QLineEdit>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QFrame>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QListView>
+#include <QStringList>
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
+
+static constexpr const char* kManagedFfmpegPackageName = "ffmpeg-8.1-essentials_build";
+static constexpr const char* kManagedFfmpegArchiveName = "ffmpeg-8.1-essentials_build.7z";
+static constexpr const char* kManagedFfmpegUrl =
+    "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1-essentials_build.7z";
+static constexpr const char* kManagedFfmpegSha256 =
+    "9b299a21fc1ca36ac22e4911f8958404c228e4059583c4651743122a8d0a7e56";
 
 static QString getKailleraRecordsDirectory()
 {
@@ -239,6 +267,49 @@ static void configurePlaybackButton(QPushButton* button, const QString& objectNa
     }
 }
 
+static void configurePlaybackComboPopup(QComboBox* combo)
+{
+    if (combo == nullptr || !useModernPlaybackUi())
+    {
+        return;
+    }
+
+    auto* popupView = new QListView(combo);
+    popupView->setUniformItemSizes(true);
+    popupView->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    popupView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    const QPalette appPalette = QApplication::palette();
+    const QColor windowColor = appPalette.window().color();
+    const QColor baseColor = appPalette.base().color();
+    const bool darkTheme = windowColor.value() < 128;
+    const QColor popupColor = darkTheme
+        ? baseColor.darker(106)
+        : baseColor.darker(108);
+    const QColor borderColor = darkTheme
+        ? windowColor.lighter(142)
+        : windowColor.darker(132);
+
+    popupView->setStyleSheet(QString(
+        "QListView {"
+        "  background-color: %1;"
+        "  border: 1px solid %2;"
+        "  outline: none;"
+        "  padding: 2px 0px;"
+        "}"
+        "QListView::item {"
+        "  padding: 2px 8px;"
+        "  min-height: 18px;"
+        "  margin: 0px;"
+        "}"
+        "QListView::item:selected {"
+        "  background-color: palette(highlight);"
+        "  color: palette(highlighted-text);"
+        "}").arg(popupColor.name(QColor::HexRgb), borderColor.name(QColor::HexRgb)));
+
+    combo->setView(popupView);
+}
+
 static QString ensureMp4Extension(QString path)
 {
     if (!path.endsWith(".mp4", Qt::CaseInsensitive))
@@ -246,6 +317,60 @@ static QString ensureMp4Extension(QString path)
         path += ".mp4";
     }
     return path;
+}
+
+static QString pathFromFilesystem(const std::filesystem::path& path)
+{
+    return QString::fromStdString(path.string());
+}
+
+static std::filesystem::path managedFfmpegRootDirectory()
+{
+    return CoreGetUserDataDirectory() / "Tools" / "ffmpeg";
+}
+
+static QString managedFfmpegExecutablePath()
+{
+    return pathFromFilesystem(
+        managedFfmpegRootDirectory() / kManagedFfmpegPackageName / "bin" / "ffmpeg.exe");
+}
+
+static bool isExecutableFile(const QString& path)
+{
+    const QFileInfo fileInfo(path);
+    return fileInfo.exists() && fileInfo.isFile();
+}
+
+static QString findPathFfmpeg()
+{
+    QString executable = QStandardPaths::findExecutable("ffmpeg");
+    if (!executable.isEmpty())
+    {
+        return executable;
+    }
+
+    executable = QStandardPaths::findExecutable("ffmpeg.exe");
+    if (!executable.isEmpty())
+    {
+        return executable;
+    }
+
+    return {};
+}
+
+static bool validateFfmpegPath(const QString& path, QString* errorMessage = nullptr)
+{
+    std::string error;
+    if (KailleraExport::CheckFfmpegExecutable(path.toStdString(), &error))
+    {
+        return true;
+    }
+
+    if (errorMessage != nullptr)
+    {
+        *errorMessage = QString::fromStdString(error);
+    }
+    return false;
 }
 
 static QString formatExportDuration(double totalSeconds)
@@ -860,6 +985,377 @@ QString KailleraPlaybackDialog::getSelectedRecordingGameName(QString* recordingP
     return QString::fromStdString(krecData.header.gameName);
 }
 
+bool KailleraPlaybackDialog::promptForExportSettings(const QString& defaultOutputPath,
+                                                     ExportSettings& settings)
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle("Export MP4");
+    dialog.setModal(true);
+    dialog.setMinimumWidth(560);
+    if (useModernPlaybackUi())
+    {
+        dialog.setObjectName("KailleraPlaybackDialog");
+        dialog.setStyleSheet(buildPlaybackStyleSheet());
+    }
+
+    auto* mainLayout = new QVBoxLayout(&dialog);
+    mainLayout->setContentsMargins(16, 16, 16, 16);
+    mainLayout->setSpacing(14);
+
+    auto* formLayout = new QFormLayout();
+    formLayout->setContentsMargins(0, 0, 0, 0);
+    formLayout->setSpacing(8);
+    formLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+
+    auto* pathLayout = new QHBoxLayout();
+    pathLayout->setContentsMargins(0, 0, 0, 0);
+    pathLayout->setSpacing(8);
+
+    auto* pathLineEdit = new QLineEdit(ensureMp4Extension(defaultOutputPath), &dialog);
+    pathLineEdit->setMinimumWidth(360);
+    pathLayout->addWidget(pathLineEdit, 1);
+
+    auto* browseButton = new QPushButton("Browse...", &dialog);
+    configurePlaybackButton(browseButton, "KailleraSecondaryButton");
+    pathLayout->addWidget(browseButton);
+
+    formLayout->addRow("Export path", pathLayout);
+
+    auto* resolutionComboBox = new QComboBox(&dialog);
+    resolutionComboBox->addItem("480p (640x480)", QSize(640, 480));
+    resolutionComboBox->addItem("720p (960x720)", QSize(960, 720));
+    resolutionComboBox->setCurrentIndex(1);
+    resolutionComboBox->setSizeAdjustPolicy(QComboBox::AdjustToContentsOnFirstShow);
+    resolutionComboBox->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    configurePlaybackComboPopup(resolutionComboBox);
+    formLayout->addRow("Resolution", resolutionComboBox);
+
+    auto* includeChatCheckBox = new QCheckBox("Include Kaillera chat on-screen", &dialog);
+    includeChatCheckBox->setChecked(true);
+    formLayout->addRow(QString(), includeChatCheckBox);
+
+    auto* labelPortsCheckBox = new QCheckBox("Label ports", &dialog);
+    labelPortsCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::Kaillera_ExportLabelPorts));
+    formLayout->addRow(QString(), labelPortsCheckBox);
+
+    mainLayout->addLayout(formLayout);
+
+    auto* futureSettingsArea = new QFrame(&dialog);
+    futureSettingsArea->setFrameShape(QFrame::NoFrame);
+    futureSettingsArea->setMinimumHeight(96);
+    mainLayout->addWidget(futureSettingsArea, 1);
+
+    auto* buttonBox = new QDialogButtonBox(&dialog);
+    QPushButton* exportButton = buttonBox->addButton("Export", QDialogButtonBox::AcceptRole);
+    QPushButton* cancelButton = buttonBox->addButton(QDialogButtonBox::Cancel);
+    configurePlaybackButton(exportButton, "KailleraPrimaryButton");
+    configurePlaybackButton(cancelButton, "KailleraSecondaryButton");
+    mainLayout->addWidget(buttonBox);
+
+    connect(browseButton, &QPushButton::clicked, &dialog, [this, pathLineEdit]() {
+        const QString currentPath = pathLineEdit->text().trimmed();
+        const QString pickerPath = currentPath.isEmpty()
+            ? getKailleraRecordsDirectory()
+            : currentPath;
+        const QString chosenPath = QFileDialog::getSaveFileName(
+            this,
+            "Export MP4",
+            pickerPath,
+            "MP4 Video (*.mp4)");
+        if (!chosenPath.isEmpty())
+        {
+            pathLineEdit->setText(ensureMp4Extension(chosenPath));
+        }
+    });
+
+    connect(exportButton,
+            &QPushButton::clicked,
+            &dialog,
+            [&dialog, pathLineEdit, resolutionComboBox, includeChatCheckBox, labelPortsCheckBox, &settings]() {
+        const QString rawOutputPath = pathLineEdit->text().trimmed();
+        if (rawOutputPath.isEmpty())
+        {
+            QMessageBox::warning(&dialog, "Export MP4", "Choose an export path first.");
+            return;
+        }
+
+        const QString outputPath = ensureMp4Extension(rawOutputPath);
+        const QFileInfo outputFileInfo(outputPath);
+        if (outputFileInfo.absolutePath().isEmpty() ||
+            !QDir(outputFileInfo.absolutePath()).exists())
+        {
+            QMessageBox::warning(&dialog, "Export MP4", "The export folder does not exist.");
+            return;
+        }
+
+        if (outputFileInfo.exists() &&
+            QMessageBox::question(&dialog,
+                                  "Export MP4",
+                                  "Replace the existing file?",
+                                  QMessageBox::Yes | QMessageBox::No,
+                                  QMessageBox::No) != QMessageBox::Yes)
+        {
+            return;
+        }
+
+        settings.outputPath = outputPath;
+        const QSize renderSize = resolutionComboBox->currentData().toSize();
+        settings.renderWidth = renderSize.width();
+        settings.renderHeight = renderSize.height();
+        settings.includeKailleraChat = includeChatCheckBox->isChecked();
+        settings.labelPorts = labelPortsCheckBox->isChecked();
+        CoreSettingsSetValue(SettingsID::Kaillera_ExportLabelPorts, settings.labelPorts);
+        CoreSettingsSave();
+        dialog.accept();
+    });
+
+    connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+QString KailleraPlaybackDialog::resolveExportFfmpegPath()
+{
+    const QString savedPath =
+        QString::fromStdString(CoreSettingsGetStringValue(SettingsID::Kaillera_FfmpegPath));
+    if (isExecutableFile(savedPath) && validateFfmpegPath(savedPath))
+    {
+        return savedPath;
+    }
+
+    const QString applicationFfmpeg =
+        QDir(QCoreApplication::applicationDirPath()).filePath("ffmpeg.exe");
+    if (isExecutableFile(applicationFfmpeg) && validateFfmpegPath(applicationFfmpeg))
+    {
+        return applicationFfmpeg;
+    }
+
+    const QString managedFfmpeg = managedFfmpegExecutablePath();
+    if (isExecutableFile(managedFfmpeg) && validateFfmpegPath(managedFfmpeg))
+    {
+        CoreSettingsSetValue(SettingsID::Kaillera_FfmpegPath, managedFfmpeg.toStdString());
+        CoreSettingsSave();
+        return managedFfmpeg;
+    }
+
+    const QString pathFfmpeg = findPathFfmpeg();
+    if (isExecutableFile(pathFfmpeg) && validateFfmpegPath(pathFfmpeg))
+    {
+        return pathFfmpeg;
+    }
+
+    return promptForFfmpegPath();
+}
+
+QString KailleraPlaybackDialog::promptForFfmpegPath()
+{
+    QMessageBox messageBox(this);
+    messageBox.setIcon(QMessageBox::Question);
+    messageBox.setWindowTitle("Export MP4");
+    messageBox.setText("MP4 export requires FFmpeg.");
+    messageBox.setInformativeText(
+        "RMG-K can download a GPL FFmpeg essentials build for replay export, or you can choose an existing ffmpeg.exe.");
+
+    QPushButton* downloadButton = messageBox.addButton("Download FFmpeg", QMessageBox::AcceptRole);
+    QPushButton* chooseButton = messageBox.addButton("Choose ffmpeg.exe", QMessageBox::ActionRole);
+    messageBox.addButton(QMessageBox::Cancel);
+    messageBox.setDefaultButton(downloadButton);
+    messageBox.exec();
+
+    if (messageBox.clickedButton() == downloadButton)
+    {
+        return downloadManagedFfmpeg();
+    }
+
+    if (messageBox.clickedButton() != chooseButton)
+    {
+        return {};
+    }
+
+    const QString path = QFileDialog::getOpenFileName(
+        this,
+        "Choose FFmpeg",
+        QString(),
+        "FFmpeg (ffmpeg.exe);;Executables (*.exe)");
+    if (path.isEmpty())
+    {
+        return {};
+    }
+
+    QString errorMessage;
+    if (!validateFfmpegPath(path, &errorMessage))
+    {
+        QMessageBox::warning(this,
+                             "Export MP4",
+                             "The selected FFmpeg executable cannot be used for MP4 export.\n\n" + errorMessage);
+        return {};
+    }
+
+    CoreSettingsSetValue(SettingsID::Kaillera_FfmpegPath, path.toStdString());
+    CoreSettingsSave();
+    return path;
+}
+
+QString KailleraPlaybackDialog::downloadManagedFfmpeg()
+{
+    const std::filesystem::path installRoot = managedFfmpegRootDirectory();
+    const std::filesystem::path archivePath =
+        CoreGetUserCacheDirectory() / kManagedFfmpegArchiveName;
+
+    std::error_code errorCode;
+    std::filesystem::create_directories(installRoot, errorCode);
+    std::filesystem::create_directories(archivePath.parent_path(), errorCode);
+    if (errorCode)
+    {
+        QMessageBox::warning(this,
+                             "Export MP4",
+                             "Failed to create the FFmpeg download directory.\n\n" +
+                                 QString::fromStdString(errorCode.message()));
+        return {};
+    }
+
+    QNetworkAccessManager networkAccessManager(this);
+    const QUrl ffmpegUrl(QString::fromLatin1(kManagedFfmpegUrl));
+    QNetworkRequest request(ffmpegUrl);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::NoLessSafeRedirectPolicy);
+
+    QNetworkReply* reply = networkAccessManager.get(request);
+    QProgressDialog progressDialog("Downloading FFmpeg...", "Cancel", 0, 0, this);
+    progressDialog.setWindowTitle("Download FFmpeg");
+    progressDialog.setWindowModality(Qt::WindowModal);
+    progressDialog.setMinimumDuration(0);
+    progressDialog.setAutoClose(false);
+    progressDialog.setAutoReset(false);
+    progressDialog.setMinimumWidth(480);
+
+    connect(reply, &QNetworkReply::downloadProgress, this, [&progressDialog](qint64 received, qint64 total) {
+        if (total > 0)
+        {
+            progressDialog.setRange(0, static_cast<int>(std::min<qint64>(total, INT_MAX)));
+            progressDialog.setValue(static_cast<int>(std::min<qint64>(received, INT_MAX)));
+        }
+    });
+
+    QEventLoop eventLoop;
+    connect(reply, &QNetworkReply::finished, &eventLoop, &QEventLoop::quit);
+    connect(&progressDialog, &QProgressDialog::canceled, this, [reply]() {
+        reply->abort();
+    });
+
+    progressDialog.show();
+    eventLoop.exec();
+    progressDialog.close();
+
+    if (reply->error() != QNetworkReply::NoError)
+    {
+        const QString errorString = reply->errorString();
+        reply->deleteLater();
+        QMessageBox::warning(this, "Download FFmpeg", "Failed to download FFmpeg.\n\n" + errorString);
+        return {};
+    }
+
+    const QByteArray archiveBytes = reply->readAll();
+    reply->deleteLater();
+
+    const QString actualHash =
+        QString::fromLatin1(QCryptographicHash::hash(archiveBytes, QCryptographicHash::Sha256).toHex());
+    if (actualHash.compare(QString::fromLatin1(kManagedFfmpegSha256), Qt::CaseInsensitive) != 0)
+    {
+        QMessageBox::warning(this,
+                             "Download FFmpeg",
+                             "The FFmpeg download did not match the expected checksum.");
+        return {};
+    }
+
+    QFile archiveFile(pathFromFilesystem(archivePath));
+    const qint64 expectedArchiveSize = static_cast<qint64>(archiveBytes.size());
+    if (!archiveFile.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
+        archiveFile.write(archiveBytes) != expectedArchiveSize)
+    {
+        QMessageBox::warning(this, "Download FFmpeg", "Failed to save the FFmpeg download.");
+        return {};
+    }
+    archiveFile.close();
+
+    if (!CoreExtract7zip(archivePath, installRoot))
+    {
+        QMessageBox::warning(this,
+                             "Download FFmpeg",
+                             "Failed to extract FFmpeg.\n\n" + QString::fromStdString(CoreGetError()));
+        return {};
+    }
+
+    const QString ffmpegPath = managedFfmpegExecutablePath();
+    QString errorMessage;
+    if (!isExecutableFile(ffmpegPath) || !validateFfmpegPath(ffmpegPath, &errorMessage))
+    {
+        QMessageBox::warning(this,
+                             "Download FFmpeg",
+                             "The downloaded FFmpeg executable cannot be used for MP4 export.\n\n" + errorMessage);
+        return {};
+    }
+
+    CoreSettingsSetValue(SettingsID::Kaillera_FfmpegPath, ffmpegPath.toStdString());
+    CoreSettingsSave();
+    return ffmpegPath;
+}
+
+void KailleraPlaybackDialog::showExportFinishedDialog(const QString& outputPath)
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle("Export MP4");
+    dialog.setModal(true);
+    dialog.setMinimumWidth(520);
+    if (useModernPlaybackUi())
+    {
+        dialog.setObjectName("KailleraPlaybackDialog");
+        dialog.setStyleSheet(buildPlaybackStyleSheet());
+    }
+
+    auto* mainLayout = new QVBoxLayout(&dialog);
+    mainLayout->setContentsMargins(16, 16, 16, 16);
+    mainLayout->setSpacing(14);
+
+    auto* messageLabel = new QLabel("Export finished.\n\nSaved to:\n" + outputPath, &dialog);
+    messageLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    messageLabel->setWordWrap(true);
+    mainLayout->addWidget(messageLabel);
+
+    auto* buttonLayout = new QHBoxLayout();
+    buttonLayout->setContentsMargins(0, 0, 0, 0);
+    buttonLayout->setSpacing(8);
+
+    auto* openFolderButton = new QPushButton("Open Folder", &dialog);
+    auto* openFileButton = new QPushButton("Open File", &dialog);
+    auto* okButton = new QPushButton("OK", &dialog);
+    configurePlaybackButton(openFolderButton, "KailleraSecondaryButton");
+    configurePlaybackButton(openFileButton, "KailleraSecondaryButton");
+    configurePlaybackButton(okButton, "KailleraPrimaryButton");
+
+    buttonLayout->addWidget(openFolderButton);
+    buttonLayout->addWidget(openFileButton);
+    buttonLayout->addStretch(1);
+    buttonLayout->addWidget(okButton);
+    mainLayout->addLayout(buttonLayout);
+
+    connect(openFolderButton, &QPushButton::clicked, &dialog, [outputPath]() {
+        const QString folderPath = QFileInfo(outputPath).absolutePath();
+        QDesktopServices::openUrl(QUrl::fromLocalFile(folderPath));
+    });
+    connect(openFileButton, &QPushButton::clicked, &dialog, [outputPath]() {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(outputPath));
+    });
+    connect(okButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+
+    dialog.exec();
+}
+
 void KailleraPlaybackDialog::resetExportUi()
 {
     if (m_btnExport != nullptr)
@@ -892,6 +1388,11 @@ void KailleraPlaybackDialog::resetExportUi()
 void KailleraPlaybackDialog::startExportProcess(const QString& recordingPath,
                                                 const QString& romPath,
                                                 const QString& outputPath,
+                                                const QString& ffmpegPath,
+                                                int renderWidth,
+                                                int renderHeight,
+                                                bool includeKailleraChat,
+                                                bool labelPorts,
                                                 int totalFrames)
 {
     if (m_exportProcess != nullptr)
@@ -914,11 +1415,23 @@ void KailleraPlaybackDialog::startExportProcess(const QString& recordingPath,
     m_exportProcess = new QProcess(this);
     m_exportProcess->setProcessChannelMode(QProcess::MergedChannels);
     m_exportProcess->setProgram(QCoreApplication::applicationFilePath());
-    m_exportProcess->setArguments({
+    QStringList exportArguments = {
         "--export-krec", recordingPath,
         "--export-rom", romPath,
-        "--export-output", outputPath
-    });
+        "--export-output", outputPath,
+        "--export-ffmpeg", ffmpegPath,
+        "--export-width", QString::number(renderWidth),
+        "--export-height", QString::number(renderHeight)
+    };
+    if (!includeKailleraChat)
+    {
+        exportArguments << "--export-no-kaillera-chat";
+    }
+    if (labelPorts)
+    {
+        exportArguments << "--export-label-ports";
+    }
+    m_exportProcess->setArguments(exportArguments);
 
     connect(m_exportProcess, &QProcess::readyRead, this, &KailleraPlaybackDialog::onExportProcessOutput);
     connect(m_exportProcess,
@@ -1165,21 +1678,30 @@ void KailleraPlaybackDialog::onPlaybackExport()
         return;
     }
 
-    QString defaultOutputPath = QFileInfo(recordingPath).absolutePath() +
-                                QDir::separator() +
-                                QFileInfo(recordingPath).completeBaseName() +
-                                ".mp4";
-    const QString chosenOutputPath = QFileDialog::getSaveFileName(
-        this,
-        "Export MP4",
-        defaultOutputPath,
-        "MP4 Video (*.mp4)");
-    if (chosenOutputPath.isEmpty())
+    const QFileInfo recordingFileInfo(recordingPath);
+    QString defaultOutputPath = QDir::toNativeSeparators(
+        recordingFileInfo.absoluteDir().filePath(recordingFileInfo.completeBaseName() + ".mp4"));
+    ExportSettings exportSettings;
+    if (!promptForExportSettings(defaultOutputPath, exportSettings))
     {
         return;
     }
 
-    startExportProcess(recordingPath, romPath, ensureMp4Extension(chosenOutputPath), totalFrames);
+    const QString ffmpegPath = resolveExportFfmpegPath();
+    if (ffmpegPath.isEmpty())
+    {
+        return;
+    }
+
+    startExportProcess(recordingPath,
+                       romPath,
+                       exportSettings.outputPath,
+                       ffmpegPath,
+                       exportSettings.renderWidth,
+                       exportSettings.renderHeight,
+                       exportSettings.includeKailleraChat,
+                       exportSettings.labelPorts,
+                       totalFrames);
 }
 
 void KailleraPlaybackDialog::onExportProcessOutput()
@@ -1213,9 +1735,7 @@ void KailleraPlaybackDialog::onExportProcessFinished(int exitCode, QProcess::Exi
 
     if (exitStatus == QProcess::NormalExit && exitCode == 0)
     {
-        QMessageBox::information(this,
-                                 "Export MP4",
-                                 "Export finished.\n\nSaved to:\n" + outputPath);
+        showExportFinishedDialog(outputPath);
         return;
     }
 

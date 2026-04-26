@@ -44,13 +44,35 @@ private slots:
     void onExportProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
 
 private:
+    struct ExportSettings
+    {
+        QString outputPath;
+        int renderWidth = 960;
+        int renderHeight = 720;
+        bool includeKailleraChat = true;
+        bool labelPorts = false;
+    };
+
     void setupUI();
     void updatePlaybackControls();
     void populatePlaybackList();
     QString getSelectedRecordingPath() const;
     QString getSelectedRecordingGameName(QString* recordingPath = nullptr, int* totalFrames = nullptr) const;
+    bool promptForExportSettings(const QString& defaultOutputPath, ExportSettings& settings);
+    QString resolveExportFfmpegPath();
+    QString promptForFfmpegPath();
+    QString downloadManagedFfmpeg();
+    void showExportFinishedDialog(const QString& outputPath);
     void resetExportUi();
-    void startExportProcess(const QString& recordingPath, const QString& romPath, const QString& outputPath, int totalFrames);
+    void startExportProcess(const QString& recordingPath,
+                            const QString& romPath,
+                            const QString& outputPath,
+                            const QString& ffmpegPath,
+                            int renderWidth,
+                            int renderHeight,
+                            bool includeKailleraChat,
+                            bool labelPorts,
+                            int totalFrames);
     void processExportOutputText(const QString& text, bool finalizePartialLine = false);
     void processExportOutputLine(const QString& line);
     void updateExportProgressDialog();

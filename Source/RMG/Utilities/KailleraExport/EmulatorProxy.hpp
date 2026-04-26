@@ -243,6 +243,7 @@ private:
     bool loadPlugin(const std::string& path, m64p_plugin_type type);
     void detachPlugins();
     void configureGlideN64();
+    void disableGlideN64Osd();
 
     m64p_dynlib_handle m_CoreHandle = nullptr;
     m64p_dynlib_handle m_PluginHandles[4] = {};

@@ -225,11 +225,19 @@ int main(int argc, char **argv)
     QCommandLineOption exportRomOption("export-rom", "Internal replay export mode: input ROM file", "path");
     QCommandLineOption exportOutputOption("export-output", "Internal replay export mode: output MP4 file", "path");
     QCommandLineOption exportFfmpegOption("export-ffmpeg", "Internal replay export mode: FFmpeg executable", "path");
+    QCommandLineOption exportWidthOption("export-width", "Internal replay export mode: render width", "pixels");
+    QCommandLineOption exportHeightOption("export-height", "Internal replay export mode: render height", "pixels");
+    QCommandLineOption exportNoKailleraChatOption("export-no-kaillera-chat", "Internal replay export mode: hide Kaillera chat overlay");
+    QCommandLineOption exportLabelPortsOption("export-label-ports", "Internal replay export mode: label controller ports");
     QCommandLineOption exportVerboseOption("export-verbose", "Internal replay export mode: verbose export logging");
     exportKrecOption.setFlags(QCommandLineOption::HiddenFromHelp);
     exportRomOption.setFlags(QCommandLineOption::HiddenFromHelp);
     exportOutputOption.setFlags(QCommandLineOption::HiddenFromHelp);
     exportFfmpegOption.setFlags(QCommandLineOption::HiddenFromHelp);
+    exportWidthOption.setFlags(QCommandLineOption::HiddenFromHelp);
+    exportHeightOption.setFlags(QCommandLineOption::HiddenFromHelp);
+    exportNoKailleraChatOption.setFlags(QCommandLineOption::HiddenFromHelp);
+    exportLabelPortsOption.setFlags(QCommandLineOption::HiddenFromHelp);
     exportVerboseOption.setFlags(QCommandLineOption::HiddenFromHelp);
 
 #ifndef PORTABLE_INSTALL
@@ -248,6 +256,10 @@ int main(int argc, char **argv)
     parser.addOption(exportRomOption);
     parser.addOption(exportOutputOption);
     parser.addOption(exportFfmpegOption);
+    parser.addOption(exportWidthOption);
+    parser.addOption(exportHeightOption);
+    parser.addOption(exportNoKailleraChatOption);
+    parser.addOption(exportLabelPortsOption);
     parser.addOption(exportVerboseOption);
     parser.addPositionalArgument("ROM", "ROM to open");
 

@@ -182,6 +182,31 @@ void EmulatorProxy::configureGlideN64()
                 continue;
             }
 
+            if (currentLine.rfind("onScreenDisplay\\showFPS=", 0) == 0)
+            {
+                currentLine = "onScreenDisplay\\showFPS=0";
+            }
+            else if (currentLine.rfind("onScreenDisplay\\showVIS=", 0) == 0)
+            {
+                currentLine = "onScreenDisplay\\showVIS=0";
+            }
+            else if (currentLine.rfind("onScreenDisplay\\showPercent=", 0) == 0)
+            {
+                currentLine = "onScreenDisplay\\showPercent=0";
+            }
+            else if (currentLine.rfind("onScreenDisplay\\showInternalResolution=", 0) == 0)
+            {
+                currentLine = "onScreenDisplay\\showInternalResolution=0";
+            }
+            else if (currentLine.rfind("onScreenDisplay\\showRenderingResolution=", 0) == 0)
+            {
+                currentLine = "onScreenDisplay\\showRenderingResolution=0";
+            }
+            else if (currentLine.rfind("onScreenDisplay\\showStatistics=", 0) == 0)
+            {
+                currentLine = "onScreenDisplay\\showStatistics=0";
+            }
+
             if (!inUserSection)
             {
                 continue;
@@ -228,6 +253,23 @@ void EmulatorProxy::configureGlideN64()
             output << currentLine << '\n';
         }
     }
+}
+
+void EmulatorProxy::disableGlideN64Osd()
+{
+    m64p_handle section = nullptr;
+    if (m_ConfigOpenSection("Video-GLideN64", &section) != M64ERR_SUCCESS)
+    {
+        return;
+    }
+
+    int disabled = 0;
+    m_ConfigSetParameter(section, "ShowFPS", M64TYPE_BOOL, &disabled);
+    m_ConfigSetParameter(section, "ShowVIS", M64TYPE_BOOL, &disabled);
+    m_ConfigSetParameter(section, "ShowPercent", M64TYPE_BOOL, &disabled);
+    m_ConfigSetParameter(section, "ShowInternalResolution", M64TYPE_BOOL, &disabled);
+    m_ConfigSetParameter(section, "ShowRenderingResolution", M64TYPE_BOOL, &disabled);
+    m_ConfigSetParameter(section, "ShowStatistics", M64TYPE_BOOL, &disabled);
 }
 
 bool EmulatorProxy::init(const EmulatorConfig& config)
@@ -281,6 +323,8 @@ bool EmulatorProxy::init(const EmulatorConfig& config)
     {
         return false;
     }
+
+    disableGlideN64Osd();
 
     return true;
 }

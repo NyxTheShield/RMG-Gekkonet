@@ -140,7 +140,7 @@ static std::string chooseVideoEncoder(const std::string& ffmpegPath, bool* hardw
 {
     for (const EncoderCandidate& candidate : kPreferredVideoEncoders)
     {
-        if (!candidate.hardware || probeVideoEncoder(ffmpegPath, candidate.codec))
+        if (probeVideoEncoder(ffmpegPath, candidate.codec))
         {
             if (hardwareAccelerated != nullptr)
             {
@@ -154,7 +154,7 @@ static std::string chooseVideoEncoder(const std::string& ffmpegPath, bool* hardw
     {
         *hardwareAccelerated = false;
     }
-    return "libx264";
+    return {};
 }
 
 static std::string buildVideoEncoderFlags(const std::string& videoEncoder, int crf)
@@ -208,6 +208,11 @@ bool CheckFfmpegExecutable(const std::string& ffmpegPath, std::string* errorMess
     if (!runCommandWithCapturedOutput(command, 5000, true, &exitCode) || exitCode != 0)
     {
         return fail(errorMessage, "FFmpeg was not found");
+    }
+
+    if (chooseVideoEncoder(ffmpegPath, nullptr).empty())
+    {
+        return fail(errorMessage, "FFmpeg does not provide a usable H.264 encoder for MP4 export");
     }
 
     return true;
@@ -307,6 +312,10 @@ bool FfmpegEncoder::open(const FfmpegEncoderConfig& config, std::string* errorMe
     m_SelectedVideoEncoder = config.videoEncoder.empty()
         ? chooseVideoEncoder(config.ffmpegPath, &m_HardwareAccelerated)
         : config.videoEncoder;
+    if (m_SelectedVideoEncoder.empty())
+    {
+        return fail(errorMessage, "FFmpeg does not provide a usable H.264 encoder for MP4 export");
+    }
     if (!config.videoEncoder.empty())
     {
         m_HardwareAccelerated = (config.videoEncoder != "libx264");

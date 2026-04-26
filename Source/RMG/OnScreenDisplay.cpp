@@ -58,6 +58,7 @@ static float       l_TextAlpha       = 1.0f;
 static int         l_MessageDuration = 7;
 static float       l_MessageScale    = 1.25f;
 static size_t      l_KailleraChatMaxMessages = 5;
+static bool        l_KailleraChatEnabled = true;
 static bool        l_FontsDirty      = true;
 static const float l_BaseFontSize    = 13.0f;
 static const float l_MessageFadeoutDurationSeconds = 0.26f;
@@ -207,6 +208,7 @@ void OnScreenDisplayShutdown(void)
     l_MessageQueue.clear();
     l_InputPromptActive = false;
     l_InputPrompt.clear();
+    l_KailleraChatEnabled = true;
     l_Initialized     = false;
     l_RenderingPaused = false;
 }
@@ -318,8 +320,37 @@ void OnScreenDisplaySetKailleraChatMessage(std::string message)
         return;
     }
 
+    if (!l_KailleraChatEnabled)
+    {
+        return;
+    }
+
     l_MessageQueue.push_back({std::move(message), std::chrono::high_resolution_clock::now(), OnScreenDisplayMessageType::Chat});
     OnScreenDisplayEnforceQueueLimitWithFade(std::chrono::high_resolution_clock::now());
+}
+
+void OnScreenDisplaySetKailleraChatEnabled(bool enabled)
+{
+    l_KailleraChatEnabled = enabled;
+    if (enabled)
+    {
+        return;
+    }
+
+    l_InputPromptActive = false;
+    l_InputPrompt.clear();
+
+    for (auto it = l_MessageQueue.begin(); it != l_MessageQueue.end();)
+    {
+        if (it->type == OnScreenDisplayMessageType::Chat)
+        {
+            it = l_MessageQueue.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
 }
 
 void OnScreenDisplaySetKailleraChatMessageImmediate(std::string message)
@@ -345,6 +376,11 @@ void OnScreenDisplaySetKailleraChatMessageImmediate(std::string message)
         return;
     }
 
+    if (!l_KailleraChatEnabled)
+    {
+        return;
+    }
+
     l_MessageQueue.push_back({std::move(message), std::chrono::high_resolution_clock::now(), OnScreenDisplayMessageType::Chat, true});
     OnScreenDisplayEnforceQueueLimitWithFade(std::chrono::high_resolution_clock::now());
 }
@@ -356,7 +392,7 @@ void OnScreenDisplaySetInputPrompt(std::string message)
         return;
     }
 
-    if (message.empty())
+    if (message.empty() || !l_KailleraChatEnabled)
     {
         l_InputPromptActive = false;
         l_InputPrompt.clear();
@@ -411,7 +447,8 @@ void OnScreenDisplayRender(void)
     for (const auto& messageEntry : l_MessageQueue)
     {
         const float alpha = getMessageFadeAlpha(getMessageAgeSeconds(messageEntry)) * getOverflowFadeAlpha(messageEntry);
-        if (alpha > 0.0f)
+        if (alpha > 0.0f &&
+            (messageEntry.type != OnScreenDisplayMessageType::Chat || l_KailleraChatEnabled))
         {
             hasVisibleQueueMessage = true;
             break;
@@ -510,6 +547,10 @@ void OnScreenDisplayRender(void)
         if (renderedQueueCount >= visibleQueueCount)
         {
             break;
+        }
+        if (messageIter->type == OnScreenDisplayMessageType::Chat && !l_KailleraChatEnabled)
+        {
+            continue;
         }
 
         const float messageAgeSeconds = getMessageAgeSeconds(*messageIter);

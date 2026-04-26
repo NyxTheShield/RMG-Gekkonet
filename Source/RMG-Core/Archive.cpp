@@ -118,6 +118,36 @@ static int zlib_filefunc_testerror(voidpf, voidpf)
     return errno;
 }
 
+static std::filesystem::path path_from_7zip_name(const uint16_t* fileName)
+{
+    try
+    {
+        return std::filesystem::path(reinterpret_cast<const char16_t*>(fileName));
+    }
+    catch (...)
+    {
+        return {};
+    }
+}
+
+static bool is_safe_archive_path(const std::filesystem::path& path)
+{
+    if (path.empty() || path.is_absolute() || path.has_root_path())
+    {
+        return false;
+    }
+
+    for (const std::filesystem::path& component : path)
+    {
+        if (component == "..")
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 //
 // Exported Functions
 //
@@ -580,5 +610,182 @@ CORE_EXPORT bool CoreUnzip(std::filesystem::path file, std::filesystem::path pat
     }
 
     unzClose(zipFile);
+    return true;
+}
+
+CORE_EXPORT bool CoreExtract7zip(std::filesystem::path file, std::filesystem::path path)
+{
+    std::string error;
+    std::error_code errorCode;
+
+    const ISzAlloc alloc = { SzAlloc, SzFree };
+    const size_t bufSize = (static_cast<size_t>(1) << 18);
+
+    ISzAlloc allocImp = alloc;
+    ISzAlloc allocTempImp = alloc;
+
+    CFileInStream archiveStream;
+    CLookToRead2 lookStream;
+    CSzArEx db;
+
+#ifdef _WIN32
+    WRes wres = InFile_OpenW(&archiveStream.file, file.wstring().c_str());
+#else
+    WRes wres = InFile_Open(&archiveStream.file, file.string().c_str());
+#endif // _WIN32
+    if (wres != 0)
+    {
+        error = "CoreExtract7zip Failed: InFile_Open Failed: ";
+        error += std::to_string(wres);
+        CoreSetError(error);
+        return false;
+    }
+
+    FileInStream_CreateVTable(&archiveStream);
+    archiveStream.wres = 0;
+    LookToRead2_CreateVTable(&lookStream, 0);
+    lookStream.buf = nullptr;
+
+    lookStream.buf = static_cast<Byte*>(ISzAlloc_Alloc(&allocImp, bufSize));
+    if (lookStream.buf == nullptr)
+    {
+        File_Close(&archiveStream.file);
+        error = "CoreExtract7zip Failed: ISzAlloc_Alloc Failed!";
+        CoreSetError(error);
+        return false;
+    }
+
+    lookStream.bufSize = bufSize;
+    lookStream.realStream = &archiveStream.vt;
+    LookToRead2_INIT(&lookStream);
+
+    CrcGenerateTable();
+    SzArEx_Init(&db);
+
+    SRes res = SzArEx_Open(&db, &lookStream.vt, &allocImp, &allocTempImp);
+    if (res != SZ_OK)
+    {
+        error = "CoreExtract7zip Failed: SzArEx_Open Failed: ";
+        error += std::to_string(res);
+        CoreSetError(error);
+        SzArEx_Free(&db, &allocImp);
+        ISzAlloc_Free(&allocImp, lookStream.buf);
+        File_Close(&archiveStream.file);
+        return false;
+    }
+
+    uint32_t blockIndex = 0xFFFFFFFF;
+    uint8_t* readBuffer = nullptr;
+    size_t readBufferSize = 0;
+
+    for (uint32_t i = 0; i < db.NumFiles; i++)
+    {
+        size_t filenameSize = SzArEx_GetFileNameUtf16(&db, i, nullptr);
+        if (filenameSize == 0 || filenameSize > CORE_DIR_MAX_LEN)
+        {
+            continue;
+        }
+
+        uint16_t fileName[CORE_DIR_MAX_LEN];
+        SzArEx_GetFileNameUtf16(&db, i, fileName);
+
+        const std::filesystem::path relativePath = path_from_7zip_name(fileName);
+        if (!is_safe_archive_path(relativePath))
+        {
+            continue;
+        }
+
+        const std::filesystem::path targetPath = path / relativePath;
+
+        if (SzArEx_IsDir(&db, i))
+        {
+            std::filesystem::create_directories(targetPath, errorCode);
+            if (errorCode)
+            {
+                error = "CoreExtract7zip Failed: std::filesystem::create_directories(";
+                error += targetPath.string();
+                error += ") Failed: ";
+                error += errorCode.message();
+                CoreSetError(error);
+                ISzAlloc_Free(&allocImp, readBuffer);
+                SzArEx_Free(&db, &allocImp);
+                ISzAlloc_Free(&allocImp, lookStream.buf);
+                File_Close(&archiveStream.file);
+                return false;
+            }
+            continue;
+        }
+
+        size_t offset = 0;
+        size_t outSizeProcessed = 0;
+        res = SzArEx_Extract(&db,
+                             &lookStream.vt,
+                             i,
+                             &blockIndex,
+                             &readBuffer,
+                             &readBufferSize,
+                             &offset,
+                             &outSizeProcessed,
+                             &allocImp,
+                             &allocTempImp);
+        if (res != SZ_OK)
+        {
+            error = "CoreExtract7zip Failed: SzArEx_Extract Failed: ";
+            error += std::to_string(res);
+            CoreSetError(error);
+            ISzAlloc_Free(&allocImp, readBuffer);
+            SzArEx_Free(&db, &allocImp);
+            ISzAlloc_Free(&allocImp, lookStream.buf);
+            File_Close(&archiveStream.file);
+            return false;
+        }
+
+        std::filesystem::create_directories(targetPath.parent_path(), errorCode);
+        if (errorCode)
+        {
+            error = "CoreExtract7zip Failed: std::filesystem::create_directories(";
+            error += targetPath.parent_path().string();
+            error += ") Failed: ";
+            error += errorCode.message();
+            CoreSetError(error);
+            ISzAlloc_Free(&allocImp, readBuffer);
+            SzArEx_Free(&db, &allocImp);
+            ISzAlloc_Free(&allocImp, lookStream.buf);
+            File_Close(&archiveStream.file);
+            return false;
+        }
+
+        std::ofstream outputStream(targetPath, std::ios::trunc | std::ios::binary);
+        if (!outputStream.is_open())
+        {
+            error = "CoreExtract7zip Failed: failed to open file: ";
+            error += targetPath.string();
+            CoreSetError(error);
+            ISzAlloc_Free(&allocImp, readBuffer);
+            SzArEx_Free(&db, &allocImp);
+            ISzAlloc_Free(&allocImp, lookStream.buf);
+            File_Close(&archiveStream.file);
+            return false;
+        }
+
+        outputStream.write(reinterpret_cast<const char*>(readBuffer + offset),
+                           static_cast<std::streamsize>(outSizeProcessed));
+        if (outputStream.fail())
+        {
+            error = "CoreExtract7zip Failed: failed to write file: ";
+            error += targetPath.string();
+            CoreSetError(error);
+            ISzAlloc_Free(&allocImp, readBuffer);
+            SzArEx_Free(&db, &allocImp);
+            ISzAlloc_Free(&allocImp, lookStream.buf);
+            File_Close(&archiveStream.file);
+            return false;
+        }
+    }
+
+    ISzAlloc_Free(&allocImp, readBuffer);
+    SzArEx_Free(&db, &allocImp);
+    ISzAlloc_Free(&allocImp, lookStream.buf);
+    File_Close(&archiveStream.file);
     return true;
 }

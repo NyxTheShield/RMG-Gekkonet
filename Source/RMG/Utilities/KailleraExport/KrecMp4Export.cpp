@@ -5,6 +5,7 @@
 #include "FrameCapture.hpp"
 #include "KrecParser.hpp"
 #include "PifReplay.hpp"
+#include "OnScreenDisplay.hpp"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -14,6 +15,7 @@
 #include <QTemporaryDir>
 
 #include <RMG-Core/Directories.hpp>
+#include <RMG-Core/Settings.hpp>
 
 #include <cstdio>
 #include <filesystem>
@@ -39,6 +41,8 @@ struct ReplayExportOptions
     int renderHeight = 480;
     int crf = 23;
     double fps = 60.0;
+    bool includeKailleraChat = true;
+    bool labelPorts = false;
     bool verbose = false;
 };
 
@@ -50,6 +54,10 @@ static constexpr const char* kExportKrecOption = "export-krec";
 static constexpr const char* kExportRomOption = "export-rom";
 static constexpr const char* kExportOutputOption = "export-output";
 static constexpr const char* kExportFfmpegOption = "export-ffmpeg";
+static constexpr const char* kExportWidthOption = "export-width";
+static constexpr const char* kExportHeightOption = "export-height";
+static constexpr const char* kExportNoKailleraChatOption = "export-no-kaillera-chat";
+static constexpr const char* kExportLabelPortsOption = "export-label-ports";
 static constexpr const char* kExportVerboseOption = "export-verbose";
 
 static void printExportError(const std::string& message)
@@ -113,6 +121,13 @@ static std::filesystem::path resolveFfmpegPath(const QCommandLineParser& parser)
         return std::filesystem::path(localFfmpeg.toStdString());
     }
 
+    const QString savedFfmpeg =
+        QString::fromStdString(CoreSettingsGetStringValue(SettingsID::Kaillera_FfmpegPath));
+    if (!savedFfmpeg.isEmpty() && QFileInfo::exists(savedFfmpeg))
+    {
+        return std::filesystem::path(savedFfmpeg.toStdString());
+    }
+
     const QString foundExecutable = QStandardPaths::findExecutable("ffmpeg");
     if (!foundExecutable.isEmpty())
     {
@@ -149,7 +164,30 @@ static bool parseOptions(const QCommandLineParser& parser,
     outOptions.romPath = std::filesystem::path(romValue.toStdString());
     outOptions.outputPath = std::filesystem::path(outputValue.toStdString());
     outOptions.ffmpegPath = resolveFfmpegPath(parser);
+    outOptions.includeKailleraChat = !parser.isSet(kExportNoKailleraChatOption);
+    outOptions.labelPorts = parser.isSet(kExportLabelPortsOption);
     outOptions.verbose = parser.isSet(kExportVerboseOption);
+
+    bool widthOk = true;
+    bool heightOk = true;
+    if (parser.isSet(kExportWidthOption))
+    {
+        outOptions.renderWidth = parser.value(kExportWidthOption).toInt(&widthOk);
+    }
+    if (parser.isSet(kExportHeightOption))
+    {
+        outOptions.renderHeight = parser.value(kExportHeightOption).toInt(&heightOk);
+    }
+    if (!widthOk || !heightOk ||
+        outOptions.renderWidth < 320 || outOptions.renderHeight < 240 ||
+        (outOptions.renderWidth % 2) != 0 || (outOptions.renderHeight % 2) != 0)
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "Invalid replay export resolution";
+        }
+        return false;
+    }
 
     if (outOptions.ffmpegPath.empty())
     {
@@ -325,7 +363,14 @@ static bool runReplayExport(const ReplayExportOptions& options, std::string* err
     InitializePifReplay(&krecData);
     emulator.setPifCallback(PifReplayCallback);
 
-    InitializeFrameCapture(&emulator, &encoder, encoderConfig, krecData.totalInputFrames);
+    OnScreenDisplaySetKailleraChatEnabled(options.includeKailleraChat);
+
+    PortLabelConfig portLabelConfig;
+    portLabelConfig.enabled = options.labelPorts;
+    portLabelConfig.playerCount = krecData.header.numPlayers;
+    portLabelConfig.playerNames = krecData.header.playerNames;
+
+    InitializeFrameCapture(&emulator, &encoder, encoderConfig, krecData.totalInputFrames, portLabelConfig);
     emulator.setFrameCallback(FrameCaptureCallback);
 
     const m64p_error executeResult = emulator.execute();
