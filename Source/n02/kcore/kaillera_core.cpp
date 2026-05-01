@@ -5,6 +5,9 @@
 #include "../errr.h"
 #include "../kailleraclient.h"
 
+#include <algorithm>
+#include <chrono>
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -146,8 +149,9 @@ bool kaillera_core_cleanup(){
 
 bool kaillera_disconnect(char * quitmsg){
 	n02_TRACE();
-	// Send leave message if connected and logged in
-	if (KAILLERAC.USERSTAT > 1 && KAILLERAC.connection) {
+	// Send leave message if we have sent USERLOGN (USERSTAT >= 1)
+	// USERSTAT 1 = login sent, 2 = logged in (LONGSUCC received)
+	if (KAILLERAC.USERSTAT >= 1 && KAILLERAC.connection) {
 		k_instruction ls;
 		ls.type = USERLEAV;
 		ls.store_short(-1);
@@ -308,6 +312,20 @@ bool kaillera_core_connect(char * ip, int port){
 		return false;
 	}
 	return false;
+}
+
+bool kaillera_core_finish_login(int timeout_ms) {
+	if (timeout_ms <= 0)
+		return KAILLERAC.USERSTAT > 1;
+
+	const int start = p2p_GetTime();
+	while (KAILLERAC.connection &&
+		KAILLERAC.USERSTAT == 1 &&
+		(p2p_GetTime() - start) < timeout_ms) {
+		kaillera_step();
+	}
+
+	return KAILLERAC.USERSTAT > 1;
 }
 
 void kaillera_ProcessGeneralInstruction(k_instruction * ki) {
@@ -926,15 +944,24 @@ int kaillera_modify_play_values (void * values, int size) {
 
 int kaillera_ping_server(char * host, int port, int limit) {
 	k_socket psk;
-	psk.initialize(0);
-	psk.set_address(host, port);
+	if (!psk.initialize(0) || !psk.set_address(host, port)) {
+		return -1;
+	}
 	k_socket::check_sockets(0,0);
-	DWORD ti = GetTickCount();
-	psk.send("PING", 5);
-	
-	while (!psk.has_data() && (unsigned long)(GetTickCount() - ti) < (unsigned long)limit) {
-		k_socket::check_sockets(0,10);
+	const auto ti = std::chrono::steady_clock::now();
+	if (!psk.send("PING", 5)) {
+		return -1;
 	}
 	
-	return GetTickCount() - ti;
+	while (!psk.has_data()) {
+		const int elapsed = (int)std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now() - ti).count();
+		if (elapsed >= limit) {
+			return -1;
+		}
+		k_socket::check_sockets(0, std::max(1, std::min(10, limit - elapsed)));
+	}
+	
+	return (int)std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now() - ti).count();
 }

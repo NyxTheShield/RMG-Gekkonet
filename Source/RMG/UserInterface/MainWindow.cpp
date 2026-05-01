@@ -23,6 +23,8 @@
 #include "Dialog/Netplay/CreateNetplaySessionDialog.hpp"
 #include "Dialog/Netplay/NetplaySessionDialog.hpp"
 #include "KailleraUIBridge.hpp"
+#include "Dialog/Kaillera/KailleraPlaybackDialog.hpp"
+#include "n02_client.h"
 #endif // NETPLAY
 #include "UserInterface/EventFilter.hpp"
 #include "Utilities/QtKeyToSdl3Key.hpp"
@@ -67,7 +69,75 @@
 #include <windows.h>
 #endif
 
+#include <QPainter>
+#include <QProxyStyle>
+
 #include <cstdlib>
+
+#ifdef _WIN32
+class NoAccentProxyStyle final : public QProxyStyle
+{
+public:
+    using QProxyStyle::QProxyStyle;
+
+    void drawPrimitive(PrimitiveElement element, const QStyleOption* option,
+        QPainter* painter, const QWidget* widget) const override
+    {
+        if (element == PE_PanelItemViewItem)
+        {
+            if (const auto* vopt = qstyleoption_cast<const QStyleOptionViewItem*>(option))
+            {
+                // Paint alternating row background
+                if (vopt->features & QStyleOptionViewItem::Alternate)
+                {
+                    painter->fillRect(vopt->rect, vopt->palette.alternateBase());
+                }
+
+                if (vopt->state & State_Selected)
+                {
+                    QColor sel = vopt->palette.highlight().color();
+                    sel.setAlpha(80);
+                    painter->fillRect(vopt->rect, sel);
+                }
+                else if (vopt->state & State_MouseOver)
+                {
+                    QColor hover = vopt->palette.highlight().color();
+                    hover.setAlpha(30);
+                    painter->fillRect(vopt->rect, hover);
+                }
+                return;
+            }
+        }
+        if (element == PE_FrameFocusRect || element == PE_PanelItemViewRow)
+        {
+            return;
+        }
+        // Suppress the raised panel/border on toolbar buttons when not hovered/pressed
+        if (element == PE_PanelButtonTool)
+        {
+            if (!(option->state & (State_MouseOver | State_Sunken)))
+            {
+                return;
+            }
+        }
+        QProxyStyle::drawPrimitive(element, option, painter, widget);
+    }
+
+    void drawControl(ControlElement element, const QStyleOption* option,
+        QPainter* painter, const QWidget* widget) const override
+    {
+        if (element == CE_ItemViewItem)
+        {
+            // Strip focus only — keep Selected so text color changes correctly
+            QStyleOptionViewItem opt(*qstyleoption_cast<const QStyleOptionViewItem*>(option));
+            opt.state &= ~State_HasFocus;
+            QProxyStyle::drawControl(element, &opt, painter, widget);
+            return;
+        }
+        QProxyStyle::drawControl(element, option, painter, widget);
+    }
+};
+#endif
 #include <chrono>
 #include <cmath>
 #include <algorithm>
@@ -96,9 +166,36 @@
 using namespace UserInterface;
 using namespace Utilities;
 
-#ifdef NETPLAY
 namespace
 {
+QString resolveStyleFactoryKey(const QString& styleName)
+{
+    const QStringList styleKeys = QStyleFactory::keys();
+    for (const QString& styleKey : styleKeys)
+    {
+        if (QString::compare(styleKey, styleName, Qt::CaseInsensitive) == 0)
+        {
+            return styleKey;
+        }
+    }
+
+    return styleName;
+}
+
+QPalette resolveStyleStandardPalette(const QString& styleName, const QPalette& fallbackPalette)
+{
+    QStyle* style = QStyleFactory::create(styleName);
+    if (style == nullptr)
+    {
+        return fallbackPalette;
+    }
+
+    const QPalette palette = style->standardPalette();
+    delete style;
+    return palette;
+}
+
+#ifdef NETPLAY
 constexpr std::chrono::seconds kLocalEchoMaxAge(2);
 constexpr size_t kLocalEchoMaxEntries = 8;
 
@@ -109,8 +206,8 @@ QString NormalizeOsdKailleraChatMessage(QString message)
     message.replace('\n', ' ');
     return message;
 }
-} // namespace
 #endif // NETPLAY
+} // namespace
 
 MainWindow::MainWindow() : QMainWindow(nullptr)
 {
@@ -546,31 +643,54 @@ void MainWindow::configureUI(QApplication* app, bool showUI)
 
 void MainWindow::configureTheme(QApplication* app)
 {
+    static const QString defaultStyleName = resolveStyleFactoryKey(app->style()->objectName());
+    static const QPalette defaultPalette = app->palette();
+    static const QPalette defaultStylePalette = resolveStyleStandardPalette(defaultStyleName, defaultPalette);
+    static const QString defaultStyleSheet = app->styleSheet();
+    static const QString defaultFallbackThemeName = QIcon::themeName();
+
     // we have to retrieve the fallback icon theme
     // before applying the app theme
-    QString fallbackThemeName = QIcon::themeName();
+    QString fallbackThemeName = defaultFallbackThemeName;
 
     // set theme style
     QString fallbackStyleSheet = "QTableView { border: none; color: #0096d3; selection-color: #FFFFFF; selection-background-color: #0096d3; }";
     this->setStyleSheet(fallbackStyleSheet);
 
+    app->setStyleSheet(defaultStyleSheet);
+    app->setPalette(defaultPalette);
+
     // set application theme
     QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
-    if (theme == "Native")
+    if (theme == "Modern" || theme == "Native")
     {
-        // do nothing
+        QStyle* style = QStyleFactory::create(defaultStyleName);
+        if (style != nullptr)
+        {
+#ifdef _WIN32
+            style = new NoAccentProxyStyle(style);
+#endif
+            app->setStyle(style);
+        }
+        app->setPalette(defaultPalette);
     }
+
 #ifdef _WIN32
     else if (theme == "Windows Vista")
     {
-        app->setStyle(QStyleFactory::create("WindowsVista"));
+        app->setStyle(new NoAccentProxyStyle(QStyleFactory::create("WindowsVista")));
+        app->setPalette(app->style()->standardPalette());
     }
 #endif
     else if (theme == "Fusion")
     {
-        app->setPalette(QApplication::style()->standardPalette());
-        app->setStyleSheet(QString());
         app->setStyle(QStyleFactory::create("Fusion"));
+        app->setPalette(app->style()->standardPalette());
+    }
+    else if (theme == "Fusion Warm")
+    {
+        app->setStyle(QStyleFactory::create("Fusion"));
+        app->setPalette(defaultStylePalette);
     }
     else if (theme == "Fusion Dark")
     {
@@ -618,9 +738,8 @@ void MainWindow::configureTheme(QApplication* app)
         themePath += theme;
 
         // use Fusion as a base for the stylesheet
-        app->setPalette(QApplication::style()->standardPalette());
-        app->setStyleSheet(QString());
         app->setStyle(QStyleFactory::create("Fusion"));
+        app->setPalette(app->style()->standardPalette());
 
         // set the stylesheet theme,
         // if the file exists and can be opened
@@ -649,47 +768,36 @@ void MainWindow::configureTheme(QApplication* app)
     QIcon::setFallbackThemeName(fallbackThemeName);
 }
 
+void MainWindow::reapplyTheme(void)
+{
+    QApplication* app = qobject_cast<QApplication*>(QCoreApplication::instance());
+    if (app == nullptr)
+    {
+        return;
+    }
+
+    this->configureTheme(app);
+
+    const QWidgetList widgets = QApplication::allWidgets();
+    for (QWidget* widget : widgets)
+    {
+        if (widget == nullptr)
+        {
+            continue;
+        }
+
+        widget->style()->unpolish(widget);
+        widget->style()->polish(widget);
+        widget->update();
+    }
+}
+
 QString MainWindow::getWindowTitle(void)
 {
-    const QDate currentDate = QDateTime::currentDateTime().date();
-    const QStringList firstWordList = {
-    {
-        "lesbian",
-        "gay",
-        "bisexual",
-        "transgender",
-        "queer",
-    }};
-    const QStringList secondWordList = {
-    {
-        " rights!!!",
-        "s rise up!!!"
-    }};
-
     QString windowTitle = QCoreApplication::applicationName();
-
-    // initialize random seed
-    srand(time(nullptr));
-
-    bool showCustomWindowTitle = (rand() % 10) < 3;
-
-    if (showCustomWindowTitle && currentDate.month() == 3 && currentDate.day() == 31)
-    {
-        QString secondWord = secondWordList.at(rand() % secondWordList.count());
-        windowTitle += " (transgender" + secondWord + ")";
-    }
-    else if (showCustomWindowTitle && currentDate.month() == 6)
-    {
-        QString firstWsord = firstWordList.at(rand() % firstWordList.count());
-        QString secondWord = secondWordList.at(rand() % secondWordList.count());
-        windowTitle += " (" + firstWsord + secondWord + ")";
-    }
-    else
-    {
-        windowTitle += " (";
-        windowTitle += QString::fromStdString(CoreGetVersion());
-        windowTitle += ")";
-    }
+    windowTitle += " (";
+    windowTitle += QString::fromStdString(CoreGetVersion());
+    windowTitle += ")";
 
     return windowTitle;
 }
@@ -1556,6 +1664,7 @@ void MainWindow::connectActionSignals(void)
     connect(this->action_Settings_Settings, &QAction::triggered, this, &MainWindow::on_Action_Settings_Settings);
     connect(this->action_Settings_Plugins, &QAction::triggered, this, &MainWindow::on_Action_Settings_Plugins);
     connect(this->action_Toolbar_Input, &QAction::triggered, this, &MainWindow::on_Action_Settings_Input);
+    connect(this->action_Toolbar_Playback, &QAction::triggered, this, &MainWindow::on_Action_Playback);
 
     connect(this->action_View_Toolbar, &QAction::toggled, this, &MainWindow::on_Action_View_Toolbar);
     connect(this->action_View_StatusBar, &QAction::toggled, this, &MainWindow::on_Action_View_StatusBar);
@@ -2364,10 +2473,77 @@ void MainWindow::on_Action_Settings_Input(void)
     }
 }
 
+void MainWindow::on_Action_Playback(void)
+{
+#ifdef NETPLAY
+    // If already open, just bring it to front
+    auto* existing = findChild<KailleraPlaybackDialog*>();
+    if (existing)
+    {
+        existing->raise();
+        existing->activateWindow();
+        return;
+    }
+
+    // Initialize Kaillera if not already initialized
+    if (!CoreInitKaillera())
+    {
+        this->showErrorMessage("Kaillera Error", QString::fromStdString(CoreGetError()));
+        return;
+    }
+
+    // Ensure session manager exists so gameCallback is wired up.
+    // Without this, the state machine reaches state 1 but has no
+    // callback to actually start emulation.
+    if (this->kailleraSessionManager == nullptr)
+    {
+        this->kailleraSessionManager = new KailleraSessionManager(this);
+        connect(this->kailleraSessionManager, &KailleraSessionManager::gameStarted,
+                this, &MainWindow::on_Kaillera_GameStarted);
+        connect(this->kailleraSessionManager, &KailleraSessionManager::chatReceived,
+                this, &MainWindow::on_Kaillera_ChatReceived);
+        connect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
+                this, &MainWindow::on_Kaillera_ChatReceived);
+        connect(&KailleraUIBridge::instance(), &KailleraUIBridge::p2pChatReceived,
+                this, &MainWindow::on_Kaillera_ChatReceived);
+        connect(&KailleraUIBridge::instance(), &KailleraUIBridge::recordingFileClosed,
+                this, &MainWindow::on_Kaillera_RecordingFileClosed);
+        connect(this->kailleraSessionManager, &KailleraSessionManager::playerDropped,
+                this, &MainWindow::on_Kaillera_PlayerDropped);
+        connect(this->kailleraSessionManager, &KailleraSessionManager::gameEnded,
+                this, &MainWindow::on_Kaillera_GameEnded);
+    }
+
+    // Activate playback mode so the state machine uses the playback module
+    n02::activateMode(2);
+
+    auto* dialog = new KailleraPlaybackDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &QDialog::destroyed, this, [this]() {
+        if (this->kailleraSessionManager != nullptr)
+        {
+            disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
+                       this, &MainWindow::on_Kaillera_ChatReceived);
+            disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::p2pChatReceived,
+                       this, &MainWindow::on_Kaillera_ChatReceived);
+            disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::recordingFileClosed,
+                       this, &MainWindow::on_Kaillera_RecordingFileClosed);
+            delete this->kailleraSessionManager;
+            this->kailleraSessionManager = nullptr;
+            CoreShutdownKaillera();
+            this->updateUI(this->emulationThread->isRunning(), CoreIsEmulationPaused());
+        }
+    });
+    dialog->show();
+#endif // NETPLAY
+}
+
 void MainWindow::on_Action_Settings_Settings(void)
 {
     bool isRunning = CoreIsEmulationRunning();
     bool isPaused = CoreIsEmulationPaused();
+    const QString previousTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    const QString previousIconTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_IconTheme));
 
     if (isRunning && !isPaused)
     {
@@ -2375,7 +2551,17 @@ void MainWindow::on_Action_Settings_Settings(void)
     }
 
     Dialog::SettingsDialog dialog(this);
-    dialog.exec();
+    const int result = dialog.exec();
+
+    if (result == QDialog::Accepted)
+    {
+        const QString currentTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+        const QString currentIconTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_IconTheme));
+        if (currentTheme != previousTheme || currentIconTheme != previousIconTheme)
+        {
+            this->reapplyTheme();
+        }
+    }
 
     // reload UI,
     // because we need to keep Settings -> {type}
@@ -2395,6 +2581,8 @@ void MainWindow::on_Action_Settings_Plugins(void)
 {
     bool isRunning = CoreIsEmulationRunning();
     bool isPaused = CoreIsEmulationPaused();
+    const QString previousTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    const QString previousIconTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_IconTheme));
 
     if (isRunning && !isPaused)
     {
@@ -2403,7 +2591,17 @@ void MainWindow::on_Action_Settings_Plugins(void)
 
     Dialog::SettingsDialog dialog(this);
     dialog.ShowPluginsTab();
-    dialog.exec();
+    const int result = dialog.exec();
+
+    if (result == QDialog::Accepted)
+    {
+        const QString currentTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+        const QString currentIconTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_IconTheme));
+        if (currentTheme != previousTheme || currentIconTheme != previousIconTheme)
+        {
+            this->reapplyTheme();
+        }
+    }
 
     // reload UI,
     // because we need to keep Settings -> {type}
@@ -2589,6 +2787,8 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
             this, &MainWindow::on_Kaillera_ChatReceived);
     connect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
             this, &MainWindow::on_Kaillera_ChatReceived);
+    connect(&KailleraUIBridge::instance(), &KailleraUIBridge::p2pChatReceived,
+            this, &MainWindow::on_Kaillera_ChatReceived);
     connect(&KailleraUIBridge::instance(), &KailleraUIBridge::recordingFileClosed,
             this, &MainWindow::on_Kaillera_RecordingFileClosed);
     connect(this->kailleraSessionManager, &KailleraSessionManager::playerDropped,
@@ -2613,6 +2813,8 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
     if (this->kailleraSessionManager != nullptr)
     {
         disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
+                   this, &MainWindow::on_Kaillera_ChatReceived);
+        disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::p2pChatReceived,
                    this, &MainWindow::on_Kaillera_ChatReceived);
         disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::recordingFileClosed,
                    this, &MainWindow::on_Kaillera_RecordingFileClosed);
@@ -2792,7 +2994,8 @@ bool MainWindow::handleNetplayChatKeyPress(QKeyEvent *event)
                 this->kailleraSessionManager->sendChatMessage(normalizedMessage);
 
                 const QString localNickname = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::Kaillera_Username)).trimmed();
-                if (!localNickname.isEmpty())
+                const bool useImmediateLocalEcho = (n02::getActiveMode() != 1);
+                if (useImmediateLocalEcho && !localNickname.isEmpty())
                 {
                     const auto now = std::chrono::steady_clock::now();
                     while (!this->ui_PendingLocalChatEchoes.empty())
@@ -3196,6 +3399,8 @@ void MainWindow::on_RomBrowser_RomInformation(QString file)
 void MainWindow::on_RomBrowser_EditGameSettings(QString file)
 {
     bool isRefreshingRomList = this->ui_Widget_RomBrowser->IsRefreshingRomList();
+    const QString previousTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    const QString previousIconTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_IconTheme));
     if (isRefreshingRomList)
     {
         this->ui_Widget_RomBrowser->StopRefreshRomList();
@@ -3203,7 +3408,17 @@ void MainWindow::on_RomBrowser_EditGameSettings(QString file)
 
     Dialog::SettingsDialog dialog(this, file);
     dialog.ShowGameTab();
-    dialog.exec();
+    const int result = dialog.exec();
+
+    if (result == QDialog::Accepted)
+    {
+        const QString currentTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+        const QString currentIconTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_IconTheme));
+        if (currentTheme != previousTheme || currentIconTheme != previousIconTheme)
+        {
+            this->reapplyTheme();
+        }
+    }
 
     this->updateActions(false, false);
     this->coreCallBacks->LoadSettings();

@@ -197,11 +197,11 @@ CORE_EXPORT bool CoreInitKaillera(void)
 
     // Load settings from RMG-K config into n02 globals
     int mode = CoreSettingsGetIntValue(SettingsID::Kaillera_ActiveMode);
+    if (mode < 0 || mode > 1) mode = 1; // Clamp to P2P(0) or Server(1)
     n02::activateMode(mode);
 
     kaillera_spoof_ping = CoreSettingsGetIntValue(SettingsID::Kaillera_SpoofPing);
     kaillera_30fps_mode = CoreSettingsGetBoolValue(SettingsID::Kaillera_30fpsMode) ? 1 : 0;
-    p2p_frame_delay_override = CoreSettingsGetIntValue(SettingsID::Kaillera_FrameDelay);
     p2p_30fps_mode = CoreSettingsGetBoolValue(SettingsID::Kaillera_30fpsMode) ? 1 : 0;
     n02::setRecordsDirectory(CoreGetKailleraRecordsDirectory());
 
@@ -239,6 +239,11 @@ CORE_EXPORT bool CoreShutdownKaillera(void)
 CORE_EXPORT bool CoreHasInitKaillera(void)
 {
     return s_Initialized && s_GameActive;
+}
+
+CORE_EXPORT bool CoreIsKailleraPlaybackMode(void)
+{
+    return s_Initialized && s_GameActive && (n02::getActiveMode() == 2);
 }
 
 CORE_EXPORT bool CoreShowKailleraServerDialog(void* parentHwnd)
@@ -469,6 +474,11 @@ CORE_EXPORT bool CoreShutdownKaillera(void)
 }
 
 CORE_EXPORT bool CoreHasInitKaillera(void)
+{
+    return false;
+}
+
+CORE_EXPORT bool CoreIsKailleraPlaybackMode(void)
 {
     return false;
 }

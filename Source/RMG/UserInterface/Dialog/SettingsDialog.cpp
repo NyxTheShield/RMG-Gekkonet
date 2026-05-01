@@ -22,6 +22,7 @@
 #include <QLabel>
 #include <QDir>
 #include <QIcon>
+#include <QList>
 
 #include <RMG-Core/CachedRomHeaderAndSettings.hpp>
 #include <RMG-Core/Directories.hpp>
@@ -67,6 +68,117 @@ static void setupDirectoryChangeButtonIcon(QPushButton* button)
     button->setIconSize(QSize(20, 16));
 }
 
+struct ThemeOption
+{
+    QString label;
+    QString value;
+    bool legacy;
+};
+
+static QList<ThemeOption> collectAvailableThemeOptions()
+{
+    QList<ThemeOption> options;
+
+    auto addOption = [&options](const QString& label, const QString& value, bool legacy)
+    {
+        for (const ThemeOption& existing : options)
+        {
+            if (existing.value == value)
+            {
+                return;
+            }
+        }
+
+        options.append({label, value, legacy});
+    };
+
+    addOption("Modern", "Modern", false);
+    addOption("Fusion", "Fusion", false);
+    addOption("Fusion Dark", "Fusion Dark", false);
+    addOption("Native", "Native", true);
+    addOption("Fusion Warm", "Fusion Warm", true);
+
+#ifdef _WIN32
+    addOption("Windows Vista", "Windows Vista", true);
+#endif
+
+    QString directory = QString::fromStdString(CoreGetSharedDataDirectory().string());
+    directory += CORE_DIR_SEPERATOR_STR;
+    directory += "Styles";
+    directory += CORE_DIR_SEPERATOR_STR;
+
+    const QStringList filter{"*.qss"};
+    QDirIterator stylesDirectoryIter(directory, filter, QDir::Files, QDirIterator::NoIteratorFlags);
+    while (stylesDirectoryIter.hasNext())
+    {
+        QFileInfo fileInfo(stylesDirectoryIter.next());
+        const QString value = fileInfo.fileName();
+        const QString label = fileInfo.completeBaseName().isEmpty() ? value : fileInfo.completeBaseName();
+        addOption(label, value, false);
+    }
+
+    return options;
+}
+
+static bool isLegacyThemeValue(const QList<ThemeOption>& options, const QString& themeValue)
+{
+    for (const ThemeOption& option : options)
+    {
+        if (option.value == themeValue)
+        {
+            return option.legacy;
+        }
+    }
+
+    return false;
+}
+
+static QString selectedThemeValue(const QComboBox* comboBox)
+{
+    if (comboBox == nullptr)
+    {
+        return QString();
+    }
+
+    const QVariant data = comboBox->currentData();
+    if (data.isValid() && !data.toString().isEmpty())
+    {
+        return data.toString();
+    }
+
+    return comboBox->currentText();
+}
+
+static void populateThemeCombo(QComboBox* comboBox, const QList<ThemeOption>& options, bool showLegacy, const QString& selectedValue)
+{
+    if (comboBox == nullptr)
+    {
+        return;
+    }
+
+    comboBox->clear();
+
+    int selectedIndex = -1;
+    for (const ThemeOption& option : options)
+    {
+        if (!showLegacy && option.legacy)
+        {
+            continue;
+        }
+
+        comboBox->addItem(option.label, option.value);
+        if (option.value == selectedValue)
+        {
+            selectedIndex = comboBox->count() - 1;
+        }
+    }
+
+    if (selectedIndex >= 0)
+    {
+        comboBox->setCurrentIndex(selectedIndex);
+    }
+}
+
 //
 // Local Enums
 //
@@ -98,6 +210,12 @@ enum class SettingsDialogTab
 SettingsDialog::SettingsDialog(QWidget *parent, QString file) : QDialog(parent)
 {
     this->setupUi(this);
+
+    connect(this->showLegacyThemesCheckBox, &QCheckBox::toggled, this, [this](bool checked)
+    {
+        const QString currentTheme = selectedThemeValue(this->themeComboBox);
+        populateThemeCombo(this->themeComboBox, collectAvailableThemeOptions(), checked, currentTheme);
+    });
 
     setupDirectoryChangeButtonIcon(this->changeScreenShotDirButton);
     setupDirectoryChangeButtonIcon(this->changeSaveStateDirButton);
@@ -647,6 +765,12 @@ void SettingsDialog::loadDirectorySettings(void)
 
 void SettingsDialog::load64DDSettings(void)
 {
+    int kailleraPort = CoreSettingsGetIntValue(SettingsID::Kaillera_Port);
+    if (kailleraPort < 1 || kailleraPort > 65535)
+    {
+        kailleraPort = 27886;
+    }
+
     QString recordsDirectoryRaw = QString::fromStdString(
         CoreSettingsGetStringValue(SettingsID::Kaillera_RecordsDirectory));
     if (recordsDirectoryRaw.isEmpty())
@@ -662,6 +786,7 @@ void SettingsDialog::load64DDSettings(void)
 
     this->kailleraRecordByDefaultCheckBox->setChecked(
         CoreSettingsGetBoolValue(SettingsID::Kaillera_RecordingEnabled));
+    this->kailleraPortSpinBox->setValue(kailleraPort);
     this->kailleraRecordsDirectoryLineEdit->setProperty("rawPath", recordsDirectoryRaw);
     this->kailleraRecordsDirectoryLineEdit->setText(getDisplayDirectoryPath(recordsDirectoryRaw));
     this->kailleraRecordsDirectoryLineEdit->setToolTip(this->kailleraRecordsDirectoryLineEdit->text());
@@ -682,29 +807,13 @@ void SettingsDialog::loadHotkeySettings(void)
 
 void SettingsDialog::loadInterfaceGeneralSettings(void)
 {
-    // find stylesheets and add them to the UI
-    QString directory;
-    directory = QString::fromStdString(CoreGetSharedDataDirectory().string());
-    directory += CORE_DIR_SEPERATOR_STR;
-    directory += "Styles";
-    directory += CORE_DIR_SEPERATOR_STR;
-
-    QStringList filter;
-    filter << "*.qss";
-
-    QDirIterator stylesDirectoryIter(directory, filter, QDir::Files, QDirIterator::NoIteratorFlags);
-    while (stylesDirectoryIter.hasNext())
-    {
-        QFileInfo fileInfo(stylesDirectoryIter.next());
-        this->themeComboBox->addItem(fileInfo.fileName());
-    }
-
-#ifdef _WIN32
-    this->themeComboBox->insertItem(1,"Windows Vista");
-#endif
-
-    // select currently chosen theme in UI
-    this->themeComboBox->setCurrentText(QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme)));
+    const QList<ThemeOption> themeOptions = collectAvailableThemeOptions();
+    const QString currentTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    const bool showLegacy = isLegacyThemeValue(themeOptions, currentTheme);
+    const bool blocked = this->showLegacyThemesCheckBox->blockSignals(true);
+    this->showLegacyThemesCheckBox->setChecked(showLegacy);
+    this->showLegacyThemesCheckBox->blockSignals(blocked);
+    populateThemeCombo(this->themeComboBox, themeOptions, showLegacy, currentTheme);
     this->iconThemeComboBox->setCurrentText(QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_IconTheme)));
     this->autoStartNetplayOnStartupCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::GUI_AutoStartNetplayOnStartup));
 #ifdef UPDATER
@@ -900,6 +1009,12 @@ void SettingsDialog::loadDefaultDirectorySettings(void)
 
 void SettingsDialog::loadDefault64DDSettings(void)
 {
+    int kailleraPort = CoreSettingsGetDefaultIntValue(SettingsID::Kaillera_Port);
+    if (kailleraPort < 1 || kailleraPort > 65535)
+    {
+        kailleraPort = 27886;
+    }
+
     QString recordsDirectoryRaw = QString::fromStdString(
         CoreSettingsGetDefaultStringValue(SettingsID::Kaillera_RecordsDirectory));
     if (recordsDirectoryRaw.isEmpty())
@@ -915,6 +1030,7 @@ void SettingsDialog::loadDefault64DDSettings(void)
 
     this->kailleraRecordByDefaultCheckBox->setChecked(
         CoreSettingsGetDefaultBoolValue(SettingsID::Kaillera_RecordingEnabled));
+    this->kailleraPortSpinBox->setValue(kailleraPort);
     this->kailleraRecordsDirectoryLineEdit->setProperty("rawPath", recordsDirectoryRaw);
     this->kailleraRecordsDirectoryLineEdit->setText(getDisplayDirectoryPath(recordsDirectoryRaw));
     this->kailleraRecordsDirectoryLineEdit->setToolTip(this->kailleraRecordsDirectoryLineEdit->text());
@@ -935,7 +1051,13 @@ void SettingsDialog::loadDefaultHotkeySettings(void)
 
 void SettingsDialog::loadDefaultInterfaceGeneralSettings(void)
 {
-    this->themeComboBox->setCurrentText(QString::fromStdString(CoreSettingsGetDefaultStringValue(SettingsID::GUI_Theme)));
+    const QList<ThemeOption> themeOptions = collectAvailableThemeOptions();
+    const QString defaultTheme = QString::fromStdString(CoreSettingsGetDefaultStringValue(SettingsID::GUI_Theme));
+    const bool showLegacy = isLegacyThemeValue(themeOptions, defaultTheme);
+    const bool blocked = this->showLegacyThemesCheckBox->blockSignals(true);
+    this->showLegacyThemesCheckBox->setChecked(showLegacy);
+    this->showLegacyThemesCheckBox->blockSignals(blocked);
+    populateThemeCombo(this->themeComboBox, themeOptions, showLegacy, defaultTheme);
     this->iconThemeComboBox->setCurrentText(QString::fromStdString(CoreSettingsGetDefaultStringValue(SettingsID::GUI_IconTheme)));
     this->autoStartNetplayOnStartupCheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::GUI_AutoStartNetplayOnStartup));
 #ifdef UPDATER
@@ -1183,6 +1305,7 @@ void SettingsDialog::save64DDSettings(void)
     std::string recordsDirectory = recordsDirectoryRaw.toStdString();
 
     CoreSettingsSetValue(SettingsID::Kaillera_RecordingEnabled, this->kailleraRecordByDefaultCheckBox->isChecked());
+    CoreSettingsSetValue(SettingsID::Kaillera_Port, this->kailleraPortSpinBox->value());
     CoreSettingsSetValue(SettingsID::Kaillera_RecordsDirectory, recordsDirectory);
     CoreSettingsSetValue(SettingsID::Kaillera_RecordingCapEnabled, this->kailleraRecordingCapEnabledCheckBox->isChecked());
     CoreSettingsSetValue(SettingsID::Kaillera_RecordingCapMB, this->kailleraRecordingCapMBSpinBox->value());
@@ -1200,7 +1323,7 @@ void SettingsDialog::saveHotkeySettings(void)
 
 void SettingsDialog::saveInterfaceGeneralSettings(void)
 {
-    CoreSettingsSetValue(SettingsID::GUI_Theme, this->themeComboBox->currentText().toStdString());
+    CoreSettingsSetValue(SettingsID::GUI_Theme, selectedThemeValue(this->themeComboBox).toStdString());
     CoreSettingsSetValue(SettingsID::GUI_IconTheme, this->iconThemeComboBox->currentText().toStdString());
     CoreSettingsSetValue(SettingsID::GUI_AutoStartNetplayOnStartup, this->autoStartNetplayOnStartupCheckBox->isChecked());
 #ifdef UPDATER

@@ -32,6 +32,7 @@ enum class N64ControllerButton
     LeftShoulder,
     RightShoulder,
     ZTrigger,
+    ZTrigger2,
     Invalid
 };
 

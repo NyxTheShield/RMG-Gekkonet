@@ -65,6 +65,4 @@ extern char recording_player_names[4][32];
 extern int kaillera_spoof_ping;
 extern int kaillera_30fps_mode;
 
-// P2P frame delay override (set by UI, used by p2p_core)
-extern int p2p_frame_delay_override;
 extern int p2p_30fps_mode;

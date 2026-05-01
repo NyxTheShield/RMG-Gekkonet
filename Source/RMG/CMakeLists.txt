@@ -95,6 +95,7 @@ if (NETPLAY)
         UserInterface/KailleraSessionManager.cpp
         UserInterface/KailleraUIBridge.cpp
         UserInterface/Dialog/Kaillera/KailleraNetplayDialog.cpp
+        UserInterface/Dialog/Kaillera/KailleraPlaybackDialog.cpp
         UserInterface/Dialog/Kaillera/KailleraServerBrowserDialog.cpp
         UserInterface/Dialog/Kaillera/KailleraOptionsDialog.cpp
         UserInterface/Dialog/Kaillera/KailleraP2PDialog.cpp

@@ -8,15 +8,78 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 #include "KailleraWaitingGamesDialog.hpp"
+#include "KailleraTableStyle.hpp"
 
 #ifdef NETPLAY
 
+#include <RMG-Core/Settings.hpp>
+
+#include <QApplication>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QIcon>
 
 static const char* kPlistUrl = "http://kaillerareborn.2manygames.fr:27887/plist.txt";
+
+static QString buildWaitingGamesStyleSheet()
+{
+    return QString(
+        "QDialog#KailleraWaitingGamesDialog {"
+        "  background-color: palette(window);"
+        "}"
+        "QTableWidget#KailleraSurface {"
+        "  border: 1px solid palette(mid);"
+        "  gridline-color: transparent;"
+        "  background-color: palette(base);"
+        "  alternate-background-color: palette(alternate-base);"
+        "}"
+        "QHeaderView::section {"
+        "  background-color: palette(window);"
+        "  border: none;"
+        "  border-bottom: 1px solid palette(mid);"
+        "  border-left: 1px solid palette(mid);"
+        "  padding: 6px 8px;"
+        "  font-weight: 500;"
+        "}"
+        "QHeaderView::section:first {"
+        "  border-left: none;"
+        "}"
+        "QPushButton#KailleraPrimaryButton {"
+        "  border: 1px solid #0066b4;"
+        "  border-radius: 7px;"
+        "  padding: 4px 12px;"
+        "  font-weight: 700;"
+        "  color: white;"
+        "  background-color: #0078D7;"
+        "}"
+        "QPushButton#KailleraPrimaryButton:hover {"
+        "  background-color: #1584dd;"
+        "}"
+        "QPushButton#KailleraPrimaryButton:pressed {"
+        "  background-color: #0063b1;"
+        "}"
+        "QPushButton#KailleraSecondaryButton {"
+        "  border: 1px solid palette(mid);"
+        "  border-radius: 7px;"
+        "  padding: 4px 10px;"
+        "  background-color: palette(window);"
+        "  font-weight: 600;"
+        "}"
+        "QPushButton#KailleraSecondaryButton:hover {"
+        "  border-color: palette(dark);"
+        "  background-color: palette(light);"
+        "}"
+        "QPushButton#KailleraSecondaryButton:pressed {"
+        "  border-color: palette(shadow);"
+        "  background-color: palette(mid);"
+        "  padding-top: 5px;"
+        "  padding-bottom: 3px;"
+        "}"
+        "QLabel#KailleraStatusLabel {"
+        "  color: palette(text);"
+        "}");
+}
 
 // Extract traversal code from emulator string.
 // Input:  "FakeEmulator 1.0 {CC:ABC123}"
@@ -46,6 +109,13 @@ KailleraWaitingGamesDialog::KailleraWaitingGamesDialog(QWidget* parent)
     setMinimumSize(640, 400);
     resize(700, 450);
 
+    const QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
+    if (theme == "Modern")
+    {
+        setObjectName("KailleraWaitingGamesDialog");
+        setStyleSheet(buildWaitingGamesStyleSheet());
+    }
+
     m_netManager = new QNetworkAccessManager(this);
     connect(m_netManager, &QNetworkAccessManager::finished,
             this, &KailleraWaitingGamesDialog::onFetchFinished);
@@ -54,37 +124,57 @@ KailleraWaitingGamesDialog::KailleraWaitingGamesDialog(QWidget* parent)
 
     // Table: Game, Emulator, User, Ping
     m_table = new QTableWidget(0, 4, this);
+    m_table->setObjectName("KailleraSurface");
     m_table->setHorizontalHeaderLabels({"Game", "Emulator", "User", "Ping"});
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->horizontalHeader()->resizeSection(0, 250);
     m_table->horizontalHeader()->resizeSection(1, 170);
     m_table->horizontalHeader()->resizeSection(2, 100);
     m_table->verticalHeader()->setVisible(false);
+    m_table->setShowGrid(false);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setSelectionMode(QAbstractItemView::SingleSelection);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSortingEnabled(true);
+    applyNoAccentStyle(m_table);
+    installHeaderDoubleClickSortToggle(m_table);
     connect(m_table, &QTableWidget::cellDoubleClicked,
             this, &KailleraWaitingGamesDialog::onRowDoubleClicked);
     mainLayout->addWidget(m_table, 1);
 
     // Status label
     m_statusLabel = new QLabel("Downloading...", this);
+    if (theme == "Modern")
+    {
+        m_statusLabel->setObjectName("KailleraStatusLabel");
+    }
     mainLayout->addWidget(m_statusLabel);
 
     // Buttons
     auto* btnLayout = new QHBoxLayout();
     m_btnConnect = new QPushButton("Connect", this);
+    if (theme == "Modern")
+    {
+        m_btnConnect->setObjectName("KailleraPrimaryButton");
+    }
     connect(m_btnConnect, &QPushButton::clicked, this, &KailleraWaitingGamesDialog::onConnect);
     btnLayout->addWidget(m_btnConnect);
 
     m_btnRefresh = new QPushButton("Refresh", this);
+    if (theme == "Modern")
+    {
+        m_btnRefresh->setObjectName("KailleraSecondaryButton");
+    }
     connect(m_btnRefresh, &QPushButton::clicked, this, &KailleraWaitingGamesDialog::onRefresh);
     btnLayout->addWidget(m_btnRefresh);
 
     btnLayout->addStretch();
 
     m_btnClose = new QPushButton("Close", this);
+    if (theme == "Modern")
+    {
+        m_btnClose->setObjectName("KailleraSecondaryButton");
+    }
     connect(m_btnClose, &QPushButton::clicked, this, &QDialog::reject);
     btnLayout->addWidget(m_btnClose);
     mainLayout->addLayout(btnLayout);

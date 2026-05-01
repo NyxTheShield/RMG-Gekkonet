@@ -154,6 +154,7 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
 
     void configureUI(QApplication* app, bool showUI);
     void configureTheme(QApplication* app);
+    void reapplyTheme(void);
 
     QString getWindowTitle(void);
 
@@ -266,6 +267,8 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     void on_Kaillera_RecordingFileClosed(void);
     void on_RomBrowser_RomListRefreshFinished(bool canceled);
 #endif
+
+    void on_Action_Playback(void);
 
     void on_Action_Help_Github(void);
     void on_Action_Help_About(void);

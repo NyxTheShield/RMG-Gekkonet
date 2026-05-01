@@ -21,6 +21,7 @@
 #include <QComboBox>
 #include <QTimer>
 #include <QGroupBox>
+#include <QAction>
 
 class KailleraP2PDialog : public QDialog
 {
@@ -32,6 +33,9 @@ public:
                                const QString& joinCode = QString(),
                                QWidget* parent = nullptr);
     ~KailleraP2PDialog() override;
+
+signals:
+    void peerNicknameResolved(QString nickname);
 
 protected:
     void reject() override;
@@ -62,14 +66,19 @@ private:
 
     // NAT traversal helpers
     void travSendToServer(const QByteArray& msg);
-    void travSendReg();
-    void travSendKeep();
-    void travSendClose();
+    void travSendClaimAuto();
+    void travSendClaimAck();
+    void travSendHostOpen();
+    void travSendHostKeep();
+    void travSendHostClose();
     void travSendJoin();
     void travPunchEndpoint(const QString& hostIp, int hostPort, const QString& token);
     void travResetState();
     bool travTryFallbackConnect(const QString& reason);
     void updateHostCodeUI();
+    void travLoadIdentity();
+    void travSaveIdentity() const;
+    void travClearIdentity();
     void ssrvSend(const QByteArray& cmd);
     void ssrvWhatIsMyIp();
     void enlistGame();
@@ -94,27 +103,30 @@ private:
     QPushButton* m_btnDrop = nullptr;
     QCheckBox* m_recordCheck = nullptr;
     QCheckBox* m_enlistCheck = nullptr;
+    QLabel* m_pingLabel = nullptr;
 
     // Host group
     QGroupBox* m_hostGroup = nullptr;
     QComboBox* m_frameDelayCombo = nullptr;
     QLineEdit* m_connectCodeEdit = nullptr;
-    QPushButton* m_btnCopy = nullptr;
+    QAction* m_copyAction = nullptr;
 
     // Timers
     QTimer* m_stepTimer = nullptr;
     QTimer* m_travTimer = nullptr;
+    QTimer* m_copyFeedbackTimer = nullptr;
 
     // ---- NAT traversal state ----
     bool m_travHostEnabled = false;
     bool m_travJoinEnabled = false;
     QString m_travCode;
     QString m_travToken;
+    QString m_travLiveToken;
     int m_travRegAttempts = 0;
+    bool m_travHostSessionSuspended = false;
     bool m_travHostFallbackActive = false;
     bool m_travHostIpPending = false;
     QString m_travHostIpPort;
-    bool m_travHostRegSuspended = false;
 
     qint64 m_travNextRegMs = 0;
     qint64 m_travNextKeepMs = 0;

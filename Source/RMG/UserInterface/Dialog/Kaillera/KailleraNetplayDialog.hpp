@@ -13,20 +13,29 @@
 #ifdef NETPLAY
 
 #include <QDialog>
+#include <QAction>
 #include <QTimer>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QLineEdit>
 #include <QComboBox>
+#include <QColor>
 #include <QPushButton>
 #include <QLabel>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QUdpSocket>
+
+#include <future>
 
 struct ServerEntry {
     QString name;
     QString host; // "ip:port"
+    QString country;
+    QString players = "-";
+    int playerCount = -1;
     QString ping;
+    int pingValue = 999999;
 };
 
 class KailleraNetplayDialog : public QDialog
@@ -43,22 +52,19 @@ private slots:
     // Server tab
     void onAddServer();
     void onEditServer();
-    void onDeleteServer();
     void onConnectServer();
     void onServerDoubleClicked(int row, int column);
     void onServerRightClicked(QPoint pos);
-    void onLiveServerList();
     void onWaitingGames();
 
     // P2P tab
     void onP2PHost();
     void onP2PJoin();
     void onP2PPasteAndGo();
-    void onP2PAddStored();
-    void onP2PEditStored();
-    void onP2PDeleteStored();
     void onP2PWaitingGames();
     void onP2PStoredClicked(int row, int column);
+    void onCopyP2PCode();
+    void onConfigureP2PCode();
 
     // Network replies
     void onWaitingGamesReply(QNetworkReply* reply);
@@ -66,35 +72,48 @@ private slots:
     // Tab changed
     void onTabChanged(int index);
 
-    // Playback tab
-    void onPlaybackPlay();
-    void onPlaybackStop();
-    void onPlaybackDelete();
-    void onPlaybackRefresh();
-    void onPlaybackOpenFolder();
-    void onPlaybackDoubleClicked(int row, int column);
-
 private:
     void setupUI();
     QWidget* createServerTab();
     QWidget* createP2PTab();
-    QWidget* createPlaybackTab();
 
     void loadServerList();
     void saveServerList();
-    void refreshServerListDisplay();
+    void refreshServerListDisplay(bool forcePingResort = false);
+    void fetchLiveServerList();
+    void schedulePingAllServers();
+    void pingAllServers();
+    void startNextServerPing();
+    void pollServerPing();
+    void stopServerPingQueue();
+    void waitForActiveServerPing(bool applyResult);
+    QVector<ServerEntry> parseLiveServerList(const QByteArray& data) const;
+    int favoriteServerIndexByHost(const QString& host) const;
+    int cachedServerIndexByHost(const QString& host) const;
+    void toggleFavoriteServer(const QString& host, const QString& name);
+    void moveFavoriteServer(int favoriteIndex, int delta);
+    void updateServerPing(const QString& host, int pingMs);
+    void updateVisibleServerPing(const QString& host, const QString& pingText);
+    void cacheVisibleLiveServerOrder();
+    void updateServerButtons();
     void saveSettings();
     void loadSettings();
-    void pingServerRow(int row);
-    int serverIndexFromRow(int row);
 
-    // P2P stored users
+    // P2P recent/favorite peers
     void loadP2PStoredUsers();
     void saveP2PStoredUsers();
     void refreshP2PStoredDisplay();
-
-    // Playback
-    void populatePlaybackList();
+    int p2pStoredIndexByHost(const QString& host) const;
+    int p2pFavoriteCount() const;
+    void toggleP2PStoredFavorite(int row);
+    void rememberP2PStoredEntry(const QString& host, const QString& nickname = QString());
+    void updateP2PStoredNickname(const QString& host, const QString& nickname);
+    void showP2PCodeStatusMessage(const QString& message, const QColor& color);
+    void refreshP2PStaticCodeDisplay();
+    void maybeAutoClaimP2PStaticCode();
+    void cancelPendingP2PAutoClaim();
+    QString currentP2PStaticCode() const;
+    QString currentP2PStaticCodeOwnerToken() const;
 
     // State machine timer (replaces blocking KSSDFA loop)
     QTimer* m_stateMachineTimer = nullptr;
@@ -104,35 +123,35 @@ private:
 
     // Server list (Server tab)
     QTableWidget* m_serverTable = nullptr;
-    QVector<ServerEntry> m_servers;
+    QVector<ServerEntry> m_favoriteServers;
+    QVector<ServerEntry> m_cachedLiveServers;
+    QVector<ServerEntry> m_displayServers;
+    int m_serverSortColumn = 4;
+    Qt::SortOrder m_serverSortOrder = Qt::AscendingOrder;
 
     // Server tab buttons
     QPushButton* m_btnAdd = nullptr;
-    QPushButton* m_btnEdit = nullptr;
-    QPushButton* m_btnDelete = nullptr;
     QPushButton* m_btnConnect = nullptr;
-    QPushButton* m_btnLiveList = nullptr;
     QPushButton* m_btnWaitingGames = nullptr;
 
-    // P2P tab controls (Host sub-tab)
-    QLineEdit* m_p2pGameEdit = nullptr;
-    QTableWidget* m_p2pGameList = nullptr;
-    QLineEdit* m_p2pPortEdit = nullptr;
+    // P2P host controls
+    QLineEdit* m_p2pCurrentCodeEdit = nullptr;
+    QAction* m_p2pCopyAction = nullptr;
+    QPushButton* m_btnP2PConfigureCode = nullptr;
+    QLabel* m_p2pCodeStatusLabel = nullptr;
+    QComboBox* m_p2pGameCombo = nullptr;
     QPushButton* m_btnP2PHost = nullptr;
 
-    // P2P tab controls (Connect sub-tab)
+    // P2P connect controls
     QLineEdit* m_p2pHostEdit = nullptr;
     QPushButton* m_btnP2PJoin = nullptr;
-    QPushButton* m_btnP2PPasteGo = nullptr;
     QTableWidget* m_p2pStoredTable = nullptr;
-    QPushButton* m_btnP2PAddStored = nullptr;
-    QPushButton* m_btnP2PEditStored = nullptr;
-    QPushButton* m_btnP2PDeleteStored = nullptr;
     QPushButton* m_btnP2PWaitingGames = nullptr;
 
     struct P2PStoredEntry {
         QString name;
         QString host;
+        bool favorite = false;
     };
     QVector<P2PStoredEntry> m_p2pStoredUsers;
 
@@ -142,20 +161,26 @@ private:
     // Frame delay (Server tab only)
     QComboBox* m_frameDelayCombo = nullptr;
 
-    // Playback tab
-    QTableWidget* m_playbackTable = nullptr;
-    QPushButton* m_btnPlay = nullptr;
-    QPushButton* m_btnStop = nullptr;
-    QPushButton* m_btnPBDelete = nullptr;
-    QPushButton* m_btnPBRefresh = nullptr;
-    QPushButton* m_btnOpenFolder = nullptr;
-    bool m_playbackWasActive = false;
-
     // Network manager for master list fetching
     QNetworkAccessManager* m_netManager = nullptr;
+    QTimer* m_serverPingPollTimer = nullptr;
+    QStringList m_pendingPingHosts;
+    QString m_activePingHost;
+    std::future<int> m_activePingFuture;
+    bool m_serverListNeedsRefresh = false;
+    bool m_pingAllQueued = false;
+    bool m_pingAllInProgress = false;
+    bool m_serverPingsSuspended = false;
+    QTimer* m_p2pCopyFeedbackTimer = nullptr;
+    QTimer* m_p2pCodeStatusTimer = nullptr;
+    QUdpSocket* m_p2pAutoClaimSocket = nullptr;
+    QTimer* m_p2pAutoClaimTimeoutTimer = nullptr;
+    bool m_p2pAutoClaimAttempted = false;
+    bool m_p2pHostLaunchQueued = false;
+    bool m_p2pAutoClaimAwaitingAck = false;
+    QString m_p2pAutoClaimPendingCode;
+    QString m_p2pAutoClaimPendingToken;
 
-    // Bottom bar
-    QPushButton* m_btnClose = nullptr;
 };
 
 #endif // NETPLAY

@@ -39,6 +39,9 @@ CORE_EXPORT bool CoreShutdownKaillera(void);
 // Check if Kaillera has been initialized
 CORE_EXPORT bool CoreHasInitKaillera(void);
 
+// Check if Kaillera is in playback mode (as opposed to live netplay)
+CORE_EXPORT bool CoreIsKailleraPlaybackMode(void);
+
 // Show Kaillera server selection dialog
 // parentHwnd: Handle to parent window (HWND on Windows)
 // Returns true if user connected to a server, false if cancelled

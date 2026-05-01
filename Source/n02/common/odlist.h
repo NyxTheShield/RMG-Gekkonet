@@ -35,7 +35,7 @@ public:
 		if (items == 0) {
 			items = (_Type*)malloc(_MinLen * sizeof(_Type));
 		} else {
-			if (length > _MinLen)
+			if (length >= _MinLen)
 				items = (_Type*)realloc(items, (length + 1) * sizeof(_Type));
 		}
 		items[length++] = element;
