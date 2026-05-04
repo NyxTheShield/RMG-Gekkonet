@@ -169,31 +169,10 @@ void ControllerImageWidget::paintEvent(QPaintEvent *event)
     // of the total width/height from the image
     const double absoluteMaxOffset = (static_cast<double>(height * 0.114) / 2.0);
 
-    // Match actual input processing: independent per-axis scaling with deadzone
-    // Input is -100 to 100, normalize to -1 to 1
-    const double inputX = this->xAxisState / 100.0;
-    const double inputY = this->yAxisState / 100.0;
-    const double deadzone = this->deadzoneValue / 100.0;
-
-    // Scale each axis independently (same as main.cpp scale_axis)
-    auto scaleAxis = [deadzone](double input) -> double {
-        const double inputAbs = std::abs(input);
-        if (inputAbs <= deadzone)
-        {
-            return 0.0;
-        }
-        // (input - deadzone) / (1 - deadzone) gives 0-1 range after deadzone
-        const double scaled = (inputAbs - deadzone) / (1.0 - deadzone);
-        return (input >= 0) ? scaled : -scaled;
-    };
-
-    // Get scaled output (-1 to 1 representing N64 output range)
-    const double scaledX = scaleAxis(inputX);
-    const double scaledY = scaleAxis(inputY);
-
-    // Convert to visual offset
-    double offsetx = scaledX * absoluteMaxOffset;
-    double offsety = scaledY * absoluteMaxOffset;
+    // xAxisState/yAxisState are already the final processed values (-100 to 100)
+    // with deadzone and range applied by the caller
+    double offsetx = (this->xAxisState / 100.0) * absoluteMaxOffset;
+    double offsety = (this->yAxisState / 100.0) * absoluteMaxOffset;
 
     // adjust rect with offset
     rectF.adjust(

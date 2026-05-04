@@ -10,6 +10,8 @@
 #include "MainDialog.hpp"
 
 #include <RMG-Core/Settings.hpp>
+#include <cmath>
+#include <climits>
 
 using namespace UserInterface;
 
@@ -116,10 +118,19 @@ MainDialog::MainDialog(QWidget* parent) : QDialog(parent)
 
     // Start adapter polling for config UI
     GCA_StartConfigPolling();
+
+    // Start axis readout timer (~60Hz)
+    m_AxisReadoutTimer = new QTimer(this);
+    connect(m_AxisReadoutTimer, &QTimer::timeout, this, &MainDialog::onAxisReadoutTimer);
+    m_AxisReadoutTimer->start(16);
 }
 
 MainDialog::~MainDialog()
 {
+    if (m_AxisReadoutTimer->isActive())
+    {
+        m_AxisReadoutTimer->stop();
+    }
     if (m_PollTimer->isActive())
     {
         m_PollTimer->stop();
@@ -294,4 +305,42 @@ void MainDialog::on_sensitivitySlider_valueChanged(int value)
 void MainDialog::on_triggerTresholdSlider_valueChanged(int value)
 {
     this->triggerTresholdLabel->setText("Trigger threshold: " + QString::number(value) + "%");
+}
+
+void MainDialog::onAxisReadoutTimer()
+{
+    updateAxisReadout();
+}
+
+void MainDialog::updateAxisReadout()
+{
+    GameCubeAdapterControllerState state = GCA_GetControllerState(0);
+
+    // Convert GC stick values to signed (centered at 128)
+    const int8_t x = static_cast<int8_t>(state.LeftStickX + 128);
+    const int8_t y = static_cast<int8_t>(state.LeftStickY + 128);
+
+    const double inputX = static_cast<double>(x) / static_cast<double>(INT8_MAX);
+    const double inputY = static_cast<double>(y) / static_cast<double>(INT8_MAX);
+
+    // Apply deadzone and sensitivity (same formula as main.cpp GetKeys)
+    const double deadzone = static_cast<double>(this->deadZoneSlider->value()) / 100.0;
+    const double sensitivity = static_cast<double>(this->sensitivitySlider->value()) / 100.0;
+    const double n64Max = 85.0 * sensitivity;
+
+    auto scaleAxis = [](double input, double dz, double max) -> int {
+        double absInput = std::abs(input);
+        if (absInput <= dz) return 0;
+        double scaled = (absInput - dz) / (1.0 - dz) * max;
+        int result = static_cast<int>(std::min(scaled, max));
+        return (input >= 0) ? result : -result;
+    };
+
+    int xVal = scaleAxis(inputX, deadzone, n64Max);
+    int yVal = scaleAxis(inputY, deadzone, n64Max);
+
+    this->axisReadoutXValue->setText(QString::number(xVal));
+    this->axisReadoutYValue->setText(QString::number(yVal));
+    this->axisReadoutXBar->setValue(xVal);
+    this->axisReadoutYBar->setValue(yVal);
 }
