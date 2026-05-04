@@ -9,12 +9,15 @@
 #include <windows.h>
 #else
 #include <unistd.h>
+#include <chrono>
 #define Sleep(ms) usleep((ms) * 1000)
 #define DWORD unsigned long
-#define GetTickCount() 0
+static inline unsigned long GetTickCount() {
+    using namespace std::chrono;
+    return (unsigned long)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+}
 #endif
 
-extern int p2p_frame_delay_override;
 extern int p2p_30fps_mode;
 extern char recording_player_names[4][32];
 
@@ -473,8 +476,8 @@ bool p2p_SynChronizeClocksOrDie(){
 
 		Sleep(250);
 		
-		int PAD = p2p_getSelectedDelay();
-		int ttime = (P2PCORE.ping / 2) + ((PAD==1)?4:0);//P2PCORE.ping / 2 + 4;
+		int selected_delay = p2p_getSelectedDelay();
+		int ttime = (P2PCORE.ping / 2) + 5;
 		int predicted = p2p_GetTime() + ttime;
 		
 		p2p_instruction kxx_pdd(TSYNC,TSYNC_FORCE);
@@ -526,10 +529,10 @@ bool p2p_SynChronizeClocksOrDie(){
 			}
 		}
 		
-		int calculated_delay = 1 + (ttime * 60/1000) + ((PAD>=2)?(PAD-1):0);
-		if (p2p_frame_delay_override > 0) {
-			P2PCORE.throughput = p2p_frame_delay_override;
-			p2p_core_debug("Calculated delay: %i frames, using override: %i frames", calculated_delay, P2PCORE.throughput);
+		int calculated_delay = 1 + (ttime * 60/1000);
+		if (selected_delay > 0) {
+			P2PCORE.throughput = selected_delay;
+			p2p_core_debug("Calculated delay: %i frames, using host-selected delay: %i frames", calculated_delay, P2PCORE.throughput);
 		} else {
 			P2PCORE.throughput = calculated_delay;
 		}

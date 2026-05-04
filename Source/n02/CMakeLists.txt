@@ -32,9 +32,17 @@ target_include_directories(n02 PUBLIC
 
 target_compile_features(n02 PRIVATE cxx_std_20)
 
+# Required for linking static library into shared library (libRMG-Core.so) on Linux
+set_target_properties(n02 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # Link WinSock2 on Windows
 if(WIN32)
     target_link_libraries(n02 PRIVATE ws2_32)
+endif()
+
+# Define __cdecl as empty on non-Windows (used in legacy C-style callbacks)
+if(NOT WIN32)
+    target_compile_definitions(n02 PRIVATE __cdecl=)
 endif()
 
 # Suppress warnings for legacy C-style code

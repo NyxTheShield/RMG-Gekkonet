@@ -268,11 +268,29 @@ static l_Setting get_setting(SettingsID settingId)
     case SettingsID::Kaillera_ServerListHosts:
         setting = {SETTING_SECTION_KAILLERA, "ServerListHosts", std::string("")};
         break;
+    case SettingsID::Kaillera_ServerListCountries:
+        setting = {SETTING_SECTION_KAILLERA, "ServerListCountries", std::string("")};
+        break;
+    case SettingsID::Kaillera_ServerListPings:
+        setting = {SETTING_SECTION_KAILLERA, "ServerListPings", std::string("")};
+        break;
+    case SettingsID::Kaillera_ServerListPingValues:
+        setting = {SETTING_SECTION_KAILLERA, "ServerListPingValues", std::string("")};
+        break;
     case SettingsID::Kaillera_LiveServerCacheNames:
         setting = {SETTING_SECTION_KAILLERA, "LiveServerCacheNames", std::string("")};
         break;
     case SettingsID::Kaillera_LiveServerCacheHosts:
         setting = {SETTING_SECTION_KAILLERA, "LiveServerCacheHosts", std::string("")};
+        break;
+    case SettingsID::Kaillera_LiveServerCacheCountries:
+        setting = {SETTING_SECTION_KAILLERA, "LiveServerCacheCountries", std::string("")};
+        break;
+    case SettingsID::Kaillera_LiveServerCachePings:
+        setting = {SETTING_SECTION_KAILLERA, "LiveServerCachePings", std::string("")};
+        break;
+    case SettingsID::Kaillera_LiveServerCachePingValues:
+        setting = {SETTING_SECTION_KAILLERA, "LiveServerCachePingValues", std::string("")};
         break;
     case SettingsID::Kaillera_BrowserGeometry:
         setting = {SETTING_SECTION_KAILLERA, "BrowserGeometry", std::string("")};

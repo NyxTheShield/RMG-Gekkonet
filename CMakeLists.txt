@@ -11,7 +11,7 @@ option(NETPLAY          "Enables netplay" ON)
 option(USE_CCACHE       "Enables usage of ccache when ccache has been found" ON)
 option(NO_ASM           "Disables the usage of assembly in the mupen64plus-core" OFF)
 option(USE_ANGRYLION    "Enables building angrylion-rdp-plus which uses a non-GPL compliant license" OFF)
-set(KAILLERA_APP_VERSION_OVERRIDE "v0.8.22" CACHE STRING "Override Kaillera app version string advertised by RMG-K (dev/testing)")
+set(KAILLERA_APP_VERSION_OVERRIDE "" CACHE STRING "Override Kaillera app version string advertised by RMG-K (dev/testing)")
 
 project(RMG)
 
@@ -117,7 +117,7 @@ endif()
 
 add_subdirectory(Source/3rdParty)
 add_subdirectory(Source/3rdParty/lzma)
-if (NETPLAY AND WIN32)
+if (NETPLAY)
     add_subdirectory(Source/n02)
 endif()
 add_subdirectory(Source/RMG-Core)

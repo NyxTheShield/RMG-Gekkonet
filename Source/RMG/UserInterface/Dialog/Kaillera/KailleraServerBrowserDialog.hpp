@@ -10,7 +10,7 @@
 #ifndef KAILLERASERVERBROWSERDIALOG_HPP
 #define KAILLERASERVERBROWSERDIALOG_HPP
 
-#ifdef _WIN32
+#ifdef NETPLAY
 
 #include <QDialog>
 #include <QTimer>
@@ -177,5 +177,5 @@ private:
     int findRowByValue(QTableWidget* table, int column, unsigned int value);
 };
 
-#endif // _WIN32
+#endif // NETPLAY
 #endif // KAILLERASERVERBROWSERDIALOG_HPP

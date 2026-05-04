@@ -10,7 +10,7 @@
 #ifndef KAILLERAOPTIONSDIALOG_HPP
 #define KAILLERAOPTIONSDIALOG_HPP
 
-#ifdef _WIN32
+#ifdef NETPLAY
 
 #include <QDialog>
 #include <QSpinBox>
@@ -33,5 +33,5 @@ private:
     QLineEdit* m_joinMsgJoin = nullptr;
 };
 
-#endif // _WIN32
+#endif // NETPLAY
 #endif // KAILLERAOPTIONSDIALOG_HPP

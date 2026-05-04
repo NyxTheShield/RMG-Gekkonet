@@ -4,6 +4,13 @@
  */
 #pragma once
 
+// __cdecl is a Windows calling convention, define it as empty on other platforms
+#ifndef _WIN32
+#ifndef __cdecl
+#define __cdecl
+#endif
+#endif
+
 #include "common/k_framecache.h"
 
 extern int PACKETLOSSCOUNT;
@@ -58,6 +65,4 @@ extern char recording_player_names[4][32];
 extern int kaillera_spoof_ping;
 extern int kaillera_30fps_mode;
 
-// P2P frame delay override (set by UI, used by p2p_core)
-extern int p2p_frame_delay_override;
 extern int p2p_30fps_mode;

@@ -50,7 +50,7 @@ fi
 
 cp "$bin_dir/usr/share/applications/com.github.Rosalie241.RMG.desktop" "$bin_dir"
 cp "$bin_dir/usr/share/icons/hicolor/scalable/apps/com.github.Rosalie241.RMG.svg" "$bin_dir"
-ln -s ./com.github.Rosalie241.RMG.svg "$bin_dir"/.DirIcon
+ln -s com.github.Rosalie241.RMG.svg "$bin_dir"/.DirIcon
 mv "$bin_dir/usr/share" "$bin_dir/share"
 mv "$bin_dir/usr" "$bin_dir/shared"
 
@@ -66,6 +66,14 @@ $XVFB_RUN "$script_dir/lib4bin" --dst-dir "$bin_dir" \
 	"$lib_dir"/libvulkan* \
 	"$lib_dir"/dri/* \
 	"$lib_dir"/libssl.so* \
+	"$lib_dir"/libQt6Core.so* \
+	"$lib_dir"/libQt6Gui.so* \
+	"$lib_dir"/libQt6Widgets.so* \
+	"$lib_dir"/libQt6Network.so* \
+	"$lib_dir"/libQt6WebSockets.so* \
+	"$lib_dir"/libQt6DBus.so* \
+	"$lib_dir"/libQt6Svg.so* \
+	"$lib_dir"/libQt6SvgWidgets.so* \
 	"$lib_dir"/qt6/plugins/iconengines/* \
 	"$lib_dir"/qt6/plugins/imageformats/* \
 	"$lib_dir"/qt6/plugins/platforms/* \

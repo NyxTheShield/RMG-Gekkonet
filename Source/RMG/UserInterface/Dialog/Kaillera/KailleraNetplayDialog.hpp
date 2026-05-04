@@ -10,7 +10,7 @@
 #ifndef KAILLERANETPLAYDIALOG_HPP
 #define KAILLERANETPLAYDIALOG_HPP
 
-#ifdef _WIN32
+#ifdef NETPLAY
 
 #include <QDialog>
 #include <QAction>
@@ -19,6 +19,7 @@
 #include <QTableWidget>
 #include <QLineEdit>
 #include <QComboBox>
+#include <QColor>
 #include <QPushButton>
 #include <QLabel>
 #include <QNetworkAccessManager>
@@ -30,6 +31,7 @@
 struct ServerEntry {
     QString name;
     QString host; // "ip:port"
+    QString country;
     QString players = "-";
     int playerCount = -1;
     QString ping;
@@ -77,12 +79,14 @@ private:
 
     void loadServerList();
     void saveServerList();
-    void refreshServerListDisplay();
+    void refreshServerListDisplay(bool forcePingResort = false);
     void fetchLiveServerList();
     void schedulePingAllServers();
     void pingAllServers();
     void startNextServerPing();
     void pollServerPing();
+    void stopServerPingQueue();
+    void waitForActiveServerPing(bool applyResult);
     QVector<ServerEntry> parseLiveServerList(const QByteArray& data) const;
     int favoriteServerIndexByHost(const QString& host) const;
     int cachedServerIndexByHost(const QString& host) const;
@@ -104,6 +108,7 @@ private:
     void toggleP2PStoredFavorite(int row);
     void rememberP2PStoredEntry(const QString& host, const QString& nickname = QString());
     void updateP2PStoredNickname(const QString& host, const QString& nickname);
+    void showP2PCodeStatusMessage(const QString& message, const QColor& color);
     void refreshP2PStaticCodeDisplay();
     void maybeAutoClaimP2PStaticCode();
     void cancelPendingP2PAutoClaim();
@@ -121,6 +126,8 @@ private:
     QVector<ServerEntry> m_favoriteServers;
     QVector<ServerEntry> m_cachedLiveServers;
     QVector<ServerEntry> m_displayServers;
+    int m_serverSortColumn = 4;
+    Qt::SortOrder m_serverSortOrder = Qt::AscendingOrder;
 
     // Server tab buttons
     QPushButton* m_btnAdd = nullptr;
@@ -131,6 +138,7 @@ private:
     QLineEdit* m_p2pCurrentCodeEdit = nullptr;
     QAction* m_p2pCopyAction = nullptr;
     QPushButton* m_btnP2PConfigureCode = nullptr;
+    QLabel* m_p2pCodeStatusLabel = nullptr;
     QComboBox* m_p2pGameCombo = nullptr;
     QPushButton* m_btnP2PHost = nullptr;
 
@@ -162,7 +170,9 @@ private:
     bool m_serverListNeedsRefresh = false;
     bool m_pingAllQueued = false;
     bool m_pingAllInProgress = false;
+    bool m_serverPingsSuspended = false;
     QTimer* m_p2pCopyFeedbackTimer = nullptr;
+    QTimer* m_p2pCodeStatusTimer = nullptr;
     QUdpSocket* m_p2pAutoClaimSocket = nullptr;
     QTimer* m_p2pAutoClaimTimeoutTimer = nullptr;
     bool m_p2pAutoClaimAttempted = false;
@@ -173,5 +183,5 @@ private:
 
 };
 
-#endif // _WIN32
+#endif // NETPLAY
 #endif // KAILLERANETPLAYDIALOG_HPP

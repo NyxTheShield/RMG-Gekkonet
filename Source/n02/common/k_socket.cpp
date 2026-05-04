@@ -78,19 +78,19 @@ bool k_socket::initialize(int param_port, int minbuffersize){
 				ndfs = sock;
 			if (port == 0) {
 				//kprintf("port is 0");
-				param_port = sizeof(tempaddr);
-				getsockname(sock, (sockaddr*)&tempaddr, &param_port);
+				socklen_t addrlen = sizeof(tempaddr);
+				getsockname(sock, (sockaddr*)&tempaddr, &addrlen);
 				port = ntohs(tempaddr.sin_port);
 				//kprintf("port is %i", port);
 			}
 			if (minbuffersize > 0) {
-				int lenn = sizeof(DWORD);
-				int val;			
+				socklen_t lenn = sizeof(int);
+				int val;
 				getsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char*)&val, &lenn);
 				if (val < minbuffersize) {
-					int lenn = sizeof(DWORD);
-					int val = minbuffersize;
-					setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char*)&val, lenn);
+					socklen_t lenn2 = sizeof(int);
+					int val2 = minbuffersize;
+					setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char*)&val2, lenn2);
 				}
 			}
 			//getsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char*)&val, &lenn);
@@ -143,10 +143,10 @@ bool k_socket::send(char * buf, int len){
 }
 bool k_socket::check_recv (char* buf, int * len, bool leave_in_queue, sockaddr_in* addrp)  {
 	struct sockaddr saa;
-	int V4 = sizeof(saa);
+	socklen_t V4 = sizeof(saa);
 	has_data_waiting = 0;
 	int  lenn = 0;
-	if ((lenn = recvfrom(sock, buf, *len, leave_in_queue? MSG_PEEK:0, &saa, & V4)) > 0) {
+	if ((lenn = recvfrom(sock, buf, *len, leave_in_queue? MSG_PEEK:0, &saa, &V4)) > 0) {
 		*len = lenn;
 		if(lenn != 0) {
 			memcpy(addrp, &saa, sizeof(saa));
@@ -177,7 +177,7 @@ bool k_socket::check_sockets(int secs, int ms){
 	tv.tv_usec = ms * 1000;
 
 	fd_set temp;
-	memcpy(&temp, &sockets, 2 * sizeof(u_int) + sizeof(SOCKET) * sockets.fd_count);
+	memcpy(&temp, &sockets, sizeof(fd_set));
 
 	if(select((int)(ndfs + 1), &temp, 0, 0, &tv) != 0) {
 		if(list.size() > 0) {

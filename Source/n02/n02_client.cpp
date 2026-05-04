@@ -60,7 +60,6 @@ char recording_player_names[4][32];
 // Settings used by core protocol files
 int kaillera_spoof_ping = 0;
 int kaillera_30fps_mode = 0;
-int p2p_frame_delay_override = 0;
 int p2p_30fps_mode = 0;
 
 ///////////////////////////////////////////////////////////////////////////////

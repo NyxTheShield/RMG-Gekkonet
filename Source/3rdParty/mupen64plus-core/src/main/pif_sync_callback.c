@@ -24,7 +24,7 @@
 
 static pif_sync_callback_t g_pif_sync_callback = NULL;
 
-void set_pif_sync_callback(pif_sync_callback_t callback)
+EXPORT void CALL set_pif_sync_callback(pif_sync_callback_t callback)
 {
     g_pif_sync_callback = callback;
 }

@@ -10,7 +10,7 @@
 #ifndef KAILLERAUIBRIDGE_HPP
 #define KAILLERAUIBRIDGE_HPP
 
-#ifdef _WIN32
+#ifdef NETPLAY
 
 #include <QObject>
 #include <QString>
@@ -93,5 +93,5 @@ private:
     int m_selectedDelay = 0;
 };
 
-#endif // _WIN32
+#endif // NETPLAY
 #endif // KAILLERAUIBRIDGE_HPP

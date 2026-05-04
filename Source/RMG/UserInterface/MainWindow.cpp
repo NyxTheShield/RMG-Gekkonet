@@ -22,12 +22,10 @@
 #include "Dialog/Netplay/NetplaySessionBrowserDialog.hpp"
 #include "Dialog/Netplay/CreateNetplaySessionDialog.hpp"
 #include "Dialog/Netplay/NetplaySessionDialog.hpp"
-#endif // NETPLAY
-#if defined(NETPLAY) && defined(_WIN32)
 #include "KailleraUIBridge.hpp"
 #include "Dialog/Kaillera/KailleraPlaybackDialog.hpp"
 #include "n02_client.h"
-#endif
+#endif // NETPLAY
 #include "Dialog/RaphnetInputDialog.hpp"
 #include "UserInterface/EventFilter.hpp"
 #include "Utilities/QtKeyToSdl3Key.hpp"
@@ -114,6 +112,14 @@ public:
         if (element == PE_FrameFocusRect || element == PE_PanelItemViewRow)
         {
             return;
+        }
+        // Suppress the raised panel/border on toolbar buttons when not hovered/pressed
+        if (element == PE_PanelButtonTool)
+        {
+            if (!(option->state & (State_MouseOver | State_Sunken)))
+            {
+                return;
+            }
         }
         QProxyStyle::drawPrimitive(element, option, painter, widget);
     }
@@ -675,6 +681,7 @@ void MainWindow::configureTheme(QApplication* app)
         }
         app->setPalette(defaultPalette);
     }
+
 #ifdef _WIN32
     else if (theme == "Windows Vista")
     {
@@ -794,45 +801,10 @@ void MainWindow::reapplyTheme(void)
 
 QString MainWindow::getWindowTitle(void)
 {
-    const QDate currentDate = QDateTime::currentDateTime().date();
-    const QStringList firstWordList = {
-    {
-        "lesbian",
-        "gay",
-        "bisexual",
-        "transgender",
-        "queer",
-    }};
-    const QStringList secondWordList = {
-    {
-        " rights!!!",
-        "s rise up!!!"
-    }};
-
     QString windowTitle = QCoreApplication::applicationName();
-
-    // initialize random seed
-    srand(time(nullptr));
-
-    bool showCustomWindowTitle = (rand() % 10) < 3;
-
-    if (showCustomWindowTitle && currentDate.month() == 3 && currentDate.day() == 31)
-    {
-        QString secondWord = secondWordList.at(rand() % secondWordList.count());
-        windowTitle += " (transgender" + secondWord + ")";
-    }
-    else if (showCustomWindowTitle && currentDate.month() == 6)
-    {
-        QString firstWsord = firstWordList.at(rand() % firstWordList.count());
-        QString secondWord = secondWordList.at(rand() % secondWordList.count());
-        windowTitle += " (" + firstWsord + secondWord + ")";
-    }
-    else
-    {
-        windowTitle += " (";
-        windowTitle += QString::fromStdString(CoreGetVersion());
-        windowTitle += ")";
-    }
+    windowTitle += " (";
+    windowTitle += QString::fromStdString(CoreGetVersion());
+    windowTitle += ")";
 
     return windowTitle;
 }
@@ -2520,7 +2492,7 @@ void MainWindow::on_Action_Settings_Input(void)
 
 void MainWindow::on_Action_Playback(void)
 {
-#if defined(NETPLAY) && defined(_WIN32)
+#ifdef NETPLAY
     // If already open, just bring it to front
     auto* existing = findChild<KailleraPlaybackDialog*>();
     if (existing)
@@ -2580,7 +2552,7 @@ void MainWindow::on_Action_Playback(void)
         }
     });
     dialog->show();
-#endif // NETPLAY && _WIN32
+#endif // NETPLAY
 }
 
 void MainWindow::on_Action_Settings_Settings(void)
@@ -2830,14 +2802,12 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
             this, &MainWindow::on_Kaillera_GameStarted);
     connect(this->kailleraSessionManager, &KailleraSessionManager::chatReceived,
             this, &MainWindow::on_Kaillera_ChatReceived);
-#ifdef _WIN32
     connect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
             this, &MainWindow::on_Kaillera_ChatReceived);
     connect(&KailleraUIBridge::instance(), &KailleraUIBridge::p2pChatReceived,
             this, &MainWindow::on_Kaillera_ChatReceived);
     connect(&KailleraUIBridge::instance(), &KailleraUIBridge::recordingFileClosed,
             this, &MainWindow::on_Kaillera_RecordingFileClosed);
-#endif
     connect(this->kailleraSessionManager, &KailleraSessionManager::playerDropped,
             this, &MainWindow::on_Kaillera_PlayerDropped);
     connect(this->kailleraSessionManager, &KailleraSessionManager::gameEnded,
@@ -2859,14 +2829,12 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
     // Guard: closeEvent may have already cleaned up if the main window was closed
     if (this->kailleraSessionManager != nullptr)
     {
-#ifdef _WIN32
         disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::kailleraGameChatReceived,
                    this, &MainWindow::on_Kaillera_ChatReceived);
         disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::p2pChatReceived,
                    this, &MainWindow::on_Kaillera_ChatReceived);
         disconnect(&KailleraUIBridge::instance(), &KailleraUIBridge::recordingFileClosed,
                    this, &MainWindow::on_Kaillera_RecordingFileClosed);
-#endif
         delete this->kailleraSessionManager;
         this->kailleraSessionManager = nullptr;
         CoreShutdownKaillera();
@@ -2929,7 +2897,6 @@ void MainWindow::on_Kaillera_GameStarted(QString gameName, int playerNum, int to
 
 void MainWindow::on_Kaillera_ChatReceived(QString nickname, QString message)
 {
-#ifdef _WIN32
     // Only show in-game Kaillera chat (not lobby chat).
     if (!CoreHasInitKaillera() || !this->emulationThread->isRunning())
     {
@@ -2971,10 +2938,6 @@ void MainWindow::on_Kaillera_ChatReceived(QString nickname, QString message)
         const std::string chatLine = "<" + nickname.toStdString() + "> " + message.toStdString();
         OnScreenDisplaySetKailleraChatMessage(chatLine);
     }
-#else
-    (void)nickname;
-    (void)message;
-#endif
 }
 
 void MainWindow::on_Kaillera_PlayerDropped(QString nickname, int playerNum)
@@ -3048,11 +3011,7 @@ bool MainWindow::handleNetplayChatKeyPress(QKeyEvent *event)
                 this->kailleraSessionManager->sendChatMessage(normalizedMessage);
 
                 const QString localNickname = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::Kaillera_Username)).trimmed();
-#if defined(_WIN32)
                 const bool useImmediateLocalEcho = (n02::getActiveMode() != 1);
-#else
-                const bool useImmediateLocalEcho = true;
-#endif
                 if (useImmediateLocalEcho && !localNickname.isEmpty())
                 {
                     const auto now = std::chrono::steady_clock::now();
