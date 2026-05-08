@@ -78,6 +78,8 @@ static const int savestate_latest_version = 0x00020000;  /* 2.0 */
 static const int rollback_state_header_magic = 'RLBK';
 static const int rollback_state_legacy_header_magic = ('G' << 24) | ('G' << 16) | ('P' << 8) | 'O';
 static const int rollback_state_header_size = 6 * sizeof(int);
+static const int rollback_state_flag_omit_tlb_lut = 1 << 0;
+static const size_t rollback_tlb_lut_size = 0x100000 * sizeof(uint32_t) * 2;
 static const unsigned char pj64_magic[4] = { 0xC8, 0xA6, 0xD8, 0x23 };
 
 static savestates_job job = savestates_job_nothing;
@@ -262,11 +264,13 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
     uint64_t rollback_extra_end = 0;
     uint64_t rollback_finalize_end = 0;
     int rollback_tlb_lut_skipped = 0;
+    int rollback_tlb_lut_omitted = 0;
     unsigned char *rollback_lut_r_data = NULL;
     unsigned char *rollback_lut_w_data = NULL;
     struct tlb_entry rollback_old_tlb_entries[32];
 
     size_t savestateSize;
+    size_t rollback_payload_size;
     unsigned char *savestateData, *curr;
     int free_savestate_data = 1;
     char queue[1024];
@@ -302,6 +306,9 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
 
             memory_data = rollback_load_buffer + header_size;
             memory_size = rollback_load_buffer_size - header_size;
+            rollback_tlb_lut_omitted =
+                rollback_header[0] == rollback_state_header_magic &&
+                (rollback_header[4] & rollback_state_flag_omit_tlb_lut) != 0;
         }
         else
         {
@@ -403,9 +410,12 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
 
     /* Read the rest of the savestate */
     savestateSize = 16788244;
+    rollback_payload_size = savestateSize;
+    if (rollback_tlb_lut_omitted)
+        rollback_payload_size -= rollback_tlb_lut_size;
     if (memory_data != NULL)
     {
-        size_t required_size = savestateSize;
+        size_t required_size = rollback_payload_size;
         if (version == 0x00010000)
             required_size += sizeof(queue);
         else if (version == 0x00010100)
@@ -443,9 +453,9 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
     if (memory_data != NULL)
     {
 #if defined(M64P_BIG_ENDIAN)
-        memcpy(savestateData, memory_data + memory_offset, savestateSize);
+        memcpy(savestateData, memory_data + memory_offset, rollback_payload_size);
 #endif
-        memory_offset += savestateSize;
+        memory_offset += rollback_payload_size;
         memcpy(queue, memory_data + memory_offset, sizeof(queue));
         memory_offset += sizeof(queue);
         if (version >= 0x00010100)
@@ -647,10 +657,13 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
     if (memory_data != NULL)
     {
         memcpy(rollback_old_tlb_entries, dev->r4300.cp0.tlb.entries, sizeof(rollback_old_tlb_entries));
-        rollback_lut_r_data = curr;
-        curr += 0x100000 * sizeof(uint32_t);
-        rollback_lut_w_data = curr;
-        curr += 0x100000 * sizeof(uint32_t);
+        if (!rollback_tlb_lut_omitted)
+        {
+            rollback_lut_r_data = curr;
+            curr += 0x100000 * sizeof(uint32_t);
+            rollback_lut_w_data = curr;
+            curr += 0x100000 * sizeof(uint32_t);
+        }
     }
     else
     {
@@ -706,6 +719,13 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
         if (memcmp(rollback_old_tlb_entries, dev->r4300.cp0.tlb.entries, sizeof(rollback_old_tlb_entries)) == 0)
         {
             rollback_tlb_lut_skipped = 1;
+        }
+        else if (rollback_tlb_lut_omitted)
+        {
+            memset(dev->r4300.cp0.tlb.LUT_r, 0, 0x100000 * sizeof(dev->r4300.cp0.tlb.LUT_r[0]));
+            memset(dev->r4300.cp0.tlb.LUT_w, 0, 0x100000 * sizeof(dev->r4300.cp0.tlb.LUT_w[0]));
+            for (i = 0; i < 32; i++)
+                tlb_map(&dev->r4300.cp0.tlb, i);
         }
         else
         {
@@ -1228,9 +1248,9 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
         uint64_t rollback_free_us = rollback_perf_us(rollback_finalize_end, rollback_load_end);
 
         DebugMessage(M64MSG_INFO,
-            "Rollback load timing: total=%" PRIu64 "us read=%" PRIu64 "us fixed=%" PRIu64 "us rdram=%" PRIu64 "us sp_pif=%" PRIu64 "us tlb=%" PRIu64 "us tlb_skipped=%d cpu=%" PRIu64 "us extra=%" PRIu64 "us finalize=%" PRIu64 "us free=%" PRIu64 "us",
+            "Rollback load timing: total=%" PRIu64 "us read=%" PRIu64 "us fixed=%" PRIu64 "us rdram=%" PRIu64 "us sp_pif=%" PRIu64 "us tlb=%" PRIu64 "us tlb_skipped=%d tlb_omitted=%d cpu=%" PRIu64 "us extra=%" PRIu64 "us finalize=%" PRIu64 "us free=%" PRIu64 "us",
             rollback_total_us, rollback_read_us, rollback_fixed_us, rollback_rdram_us, rollback_sp_pif_us,
-            rollback_tlb_us, rollback_tlb_lut_skipped, rollback_cpu_us, rollback_extra_us, rollback_finalize_us, rollback_free_us);
+            rollback_tlb_us, rollback_tlb_lut_skipped, rollback_tlb_lut_omitted, rollback_cpu_us, rollback_extra_us, rollback_finalize_us, rollback_free_us);
         main_message(M64MSG_STATUS, OSD_BOTTOM_LEFT,
             "Rollback load %" PRIu64 " us (RDRAM %" PRIu64 ", TLB %" PRIu64 "%s, extra %" PRIu64 ")",
             rollback_total_us, rollback_rdram_us, rollback_tlb_us, rollback_tlb_lut_skipped ? " skip" : "", rollback_extra_us);
@@ -1855,6 +1875,8 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
 
     // Allocate memory for the save state data
     save->size = 16788288 + sizeof(queue) + 4 + 4096;
+    if (rollback_buffer_save)
+        save->size -= rollback_tlb_lut_size;
     allocation_size = save->size;
     if (rollback_buffer_save)
     {
@@ -2070,8 +2092,11 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
 
     if (rollback_buffer_save)
         rollback_save_tlb_start = SDL_GetPerformanceCounter();
-    PUTARRAY(dev->r4300.cp0.tlb.LUT_r, curr, uint32_t, 0x100000);
-    PUTARRAY(dev->r4300.cp0.tlb.LUT_w, curr, uint32_t, 0x100000);
+    if (!rollback_buffer_save)
+    {
+        PUTARRAY(dev->r4300.cp0.tlb.LUT_r, curr, uint32_t, 0x100000);
+        PUTARRAY(dev->r4300.cp0.tlb.LUT_w, curr, uint32_t, 0x100000);
+    }
     if (rollback_buffer_save)
         rollback_save_tlb_end = SDL_GetPerformanceCounter();
 
@@ -2288,7 +2313,7 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
         rollback_header[1] = rollback_state_header_size;
         rollback_header[2] = savestate_latest_version;
         rollback_header[3] = rollback_save_buffer_frame;
-        rollback_header[4] = 0;
+        rollback_header[4] = rollback_state_flag_omit_tlb_lut;
         rollback_header[5] = 0;
 
         if (rollback_save_buffer_checksum != NULL)
