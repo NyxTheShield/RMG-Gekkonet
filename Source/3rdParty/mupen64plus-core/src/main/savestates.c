@@ -77,8 +77,10 @@ static const char* savestate_magic = "M64+SAVE";
 static const int savestate_latest_version = 0x00020000;  /* 2.0 */
 static const int rollback_state_header_magic = 'RLBK';
 static const int rollback_state_legacy_header_magic = ('G' << 24) | ('G' << 16) | ('P' << 8) | 'O';
-static const int rollback_state_header_size = 6 * sizeof(int);
+static const int rollback_state_header_base_size = 6 * sizeof(int);
+static const int rollback_state_header_size = 12 * sizeof(int);
 static const int rollback_state_flag_omit_tlb_lut = 1 << 0;
+static const int rollback_state_flag_dynarec_hot_state = 1 << 1;
 static const size_t rollback_tlb_lut_size = 0x100000 * sizeof(uint32_t) * 2;
 static const unsigned char pj64_magic[4] = { 0xC8, 0xA6, 0xD8, 0x23 };
 
@@ -271,6 +273,13 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
     uint64_t rollback_finalize_end = 0;
     int rollback_tlb_lut_skipped = 0;
     int rollback_tlb_lut_omitted = 0;
+    int rollback_has_dynarec_hot_state = 0;
+    int rollback_dynarec_cycle_count = 0;
+    int rollback_dynarec_pending_exception = 0;
+    int rollback_dynarec_pcaddr = 0;
+    int rollback_dynarec_stop = 0;
+    int rollback_delay_slot = 0;
+    uint32_t rollback_cp0_last_addr = 0;
     unsigned char *rollback_lut_r_data = NULL;
     unsigned char *rollback_lut_w_data = NULL;
     struct tlb_entry rollback_old_tlb_entries[32];
@@ -292,7 +301,7 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
     {
         int *rollback_header;
 
-        if (rollback_load_buffer == NULL || rollback_load_buffer_size < (size_t)(rollback_state_header_size + 44))
+        if (rollback_load_buffer == NULL || rollback_load_buffer_size < (size_t)(rollback_state_header_base_size + 44))
         {
             main_message(M64MSG_STATUS, OSD_BOTTOM_LEFT, "Invalid rollback state buffer");
             SDL_UnlockMutex(savestates_lock);
@@ -303,7 +312,7 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
         if (rollback_header[0] == rollback_state_header_magic || rollback_header[0] == rollback_state_legacy_header_magic)
         {
             int header_size = rollback_header[1];
-            if (header_size < rollback_state_header_size || (size_t)(header_size + 44) > rollback_load_buffer_size)
+            if (header_size < rollback_state_header_base_size || (size_t)(header_size + 44) > rollback_load_buffer_size)
             {
                 main_message(M64MSG_STATUS, OSD_BOTTOM_LEFT, "Invalid rollback state header");
                 SDL_UnlockMutex(savestates_lock);
@@ -315,6 +324,18 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
             rollback_tlb_lut_omitted =
                 rollback_header[0] == rollback_state_header_magic &&
                 (rollback_header[4] & rollback_state_flag_omit_tlb_lut) != 0;
+            if (rollback_header[0] == rollback_state_header_magic &&
+                header_size >= rollback_state_header_size &&
+                (rollback_header[4] & rollback_state_flag_dynarec_hot_state) != 0)
+            {
+                rollback_has_dynarec_hot_state = 1;
+                rollback_dynarec_cycle_count = rollback_header[6];
+                rollback_dynarec_pending_exception = rollback_header[7];
+                rollback_dynarec_pcaddr = rollback_header[8];
+                rollback_dynarec_stop = rollback_header[9];
+                rollback_delay_slot = rollback_header[10];
+                rollback_cp0_last_addr = (uint32_t)rollback_header[11];
+            }
         }
         else
         {
@@ -1235,6 +1256,17 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
     dev->r4300.cp0.interrupt_unsafe_state = 0;
 
     *r4300_cp0_last_addr(&dev->r4300.cp0) = *r4300_pc(&dev->r4300);
+#ifdef NEW_DYNAREC
+    if (memory_data != NULL && rollback_has_dynarec_hot_state && dev->r4300.emumode == EMUMODE_DYNAREC)
+    {
+        dev->r4300.new_dynarec_hot_state.cycle_count = rollback_dynarec_cycle_count;
+        dev->r4300.new_dynarec_hot_state.pending_exception = rollback_dynarec_pending_exception;
+        dev->r4300.new_dynarec_hot_state.pcaddr = rollback_dynarec_pcaddr;
+        dev->r4300.new_dynarec_hot_state.stop = rollback_dynarec_stop;
+        dev->r4300.delay_slot = rollback_delay_slot;
+        *r4300_cp0_last_addr(&dev->r4300.cp0) = rollback_cp0_last_addr;
+    }
+#endif
     if (memory_data != NULL)
         rollback_finalize_end = SDL_GetPerformanceCounter();
 
@@ -2315,13 +2347,36 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
     if (rollback_buffer_save)
     {
         int *rollback_header = (int *)save->data;
+        int rollback_flags = rollback_state_flag_omit_tlb_lut;
 
         rollback_header[0] = rollback_state_header_magic;
         rollback_header[1] = rollback_state_header_size;
         rollback_header[2] = savestate_latest_version;
         rollback_header[3] = rollback_save_buffer_frame;
-        rollback_header[4] = rollback_state_flag_omit_tlb_lut;
+        rollback_header[4] = rollback_flags;
         rollback_header[5] = 0;
+#ifdef NEW_DYNAREC
+        if (dev->r4300.emumode == EMUMODE_DYNAREC)
+        {
+            rollback_flags |= rollback_state_flag_dynarec_hot_state;
+            rollback_header[4] = rollback_flags;
+            rollback_header[6] = dev->r4300.new_dynarec_hot_state.cycle_count;
+            rollback_header[7] = dev->r4300.new_dynarec_hot_state.pending_exception;
+            rollback_header[8] = dev->r4300.new_dynarec_hot_state.pcaddr;
+            rollback_header[9] = dev->r4300.new_dynarec_hot_state.stop;
+            rollback_header[10] = dev->r4300.delay_slot;
+            rollback_header[11] = (int)*r4300_cp0_last_addr((struct cp0*)&dev->r4300.cp0);
+        }
+        else
+#endif
+        {
+            rollback_header[6] = 0;
+            rollback_header[7] = 0;
+            rollback_header[8] = 0;
+            rollback_header[9] = 0;
+            rollback_header[10] = 0;
+            rollback_header[11] = 0;
+        }
 
         if (rollback_save_buffer_checksum != NULL)
             *rollback_save_buffer_checksum = 0;
