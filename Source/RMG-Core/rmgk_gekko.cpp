@@ -18,6 +18,7 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -55,6 +56,7 @@ int g_GekkoLocalHandle = -1;
 int g_GekkoRemoteHandle = -1;
 std::vector<unsigned char> g_GekkoLatchedInput;
 bool g_GekkoHasLatchedInput = false;
+std::atomic_bool g_GekkoStopRequested{false};
 std::vector<PendingGekkoSave> g_GekkoPendingSaves;
 std::mutex g_GekkoLogMutex;
 int g_GekkoLogFrames = 0;
@@ -418,12 +420,23 @@ int rollback_execute_begin_frame(void* userData)
     {
         return 0;
     }
+    if (g_GekkoStopRequested.load(std::memory_order_relaxed))
+    {
+        write_gekko_log("begin_frame result=stop_requested");
+        return 0;
+    }
 
     g_GekkoHasLatchedInput = false;
     g_GekkoPendingSaves.clear();
 
     for (;;)
     {
+        if (g_GekkoStopRequested.load(std::memory_order_relaxed))
+        {
+            write_gekko_log("begin_frame result=stop_requested");
+            return 0;
+        }
+
         if (!submit_local_input())
         {
             return 0;
@@ -590,6 +603,7 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
     close_session();
 
     g_GekkoLocalPlayer = localPlayer;
+    g_GekkoStopRequested.store(false, std::memory_order_relaxed);
     reset_gekko_log();
 
     if (gameName == nullptr || players < 2 || inputSize != static_cast<int>(sizeof(uint32_t)) ||
@@ -710,6 +724,7 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
 CORE_EXPORT void rmgk_gekko::close_session()
 {
 #ifdef RMGK_HAVE_GEKKONET
+    g_GekkoStopRequested.store(false, std::memory_order_relaxed);
     clear_core_input_callback();
     if (g_GekkoSession != nullptr)
     {
@@ -725,6 +740,13 @@ CORE_EXPORT void rmgk_gekko::close_session()
     g_GekkoLatchedInput.clear();
     g_GekkoHasLatchedInput = false;
     g_GekkoPendingSaves.clear();
+#endif
+}
+
+CORE_EXPORT void rmgk_gekko::request_stop()
+{
+#ifdef RMGK_HAVE_GEKKONET
+    g_GekkoStopRequested.store(true, std::memory_order_relaxed);
 #endif
 }
 

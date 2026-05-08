@@ -681,6 +681,10 @@ CORE_EXPORT bool CoreStopEmulation(void)
     std::string error;
     m64p_error ret;
 
+#ifdef NETPLAY
+    rmgk_gekko::request_stop();
+#endif
+
     if (!m64p::Core.IsHooked())
     {
         return false;
