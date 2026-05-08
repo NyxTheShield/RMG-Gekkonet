@@ -40,6 +40,9 @@
 #include <string.h>
 #include <time.h>
 
+static uint64_t l_RollbackCachedCodeFullInvalidates = 0;
+static uint64_t l_RollbackCachedCodeRangeInvalidates = 0;
+
 void init_r4300(struct r4300_core* r4300, struct memory* mem, struct mi_controller* mi, struct rdram* rdram, const struct interrupt_handler* interrupt_handlers,
     unsigned int emumode, unsigned int count_per_op, unsigned int count_per_op_denom_pot, int no_compiled_jump, int randomize_interrupt, uint32_t start_address)
 {
@@ -155,7 +158,42 @@ void run_r4300(struct r4300_core* r4300)
         init_blocks(&r4300->cached_interp);
 #ifdef NEW_DYNAREC
         new_dynarec_init();
-        new_dyna_start();
+        if (main_rollback_execute_active())
+        {
+            int dynarec_started = 0;
+            while (g_EmulatorRunning)
+            {
+                if (!main_rollback_execute_begin_frame()) {
+                    main_stop();
+                    break;
+                }
+
+                main_rollback_visible_frame_begin();
+                *r4300_stop(r4300) = 0;
+                if (!dynarec_started)
+                {
+                    dynarec_started = 1;
+                    new_dyna_start();
+                }
+                else
+                {
+                    new_dyna_resume();
+                }
+
+                if (!main_rollback_visible_frame_completed()) {
+                    break;
+                }
+
+                if (!main_rollback_execute_end_frame()) {
+                    main_stop();
+                    break;
+                }
+            }
+        }
+        else
+        {
+            new_dyna_start();
+        }
         new_dynarec_cleanup();
 #else
         r4300->cached_interp.fin_block = dynarec_fin_block;
@@ -244,6 +282,14 @@ void run_r4300(struct r4300_core* r4300)
 int run_r4300_current(struct r4300_core* r4300)
 {
     *r4300_stop(r4300) = 0;
+
+#ifdef NEW_DYNAREC
+    if (r4300->emumode == EMUMODE_DYNAREC)
+    {
+        new_dyna_resume();
+        return 1;
+    }
+#endif
 
     if (r4300->emumode != EMUMODE_INTERPRETER || *r4300_pc_struct(r4300) == NULL)
     {
@@ -448,6 +494,11 @@ void invalidate_r4300_cached_code(struct r4300_core* r4300, uint32_t address, si
 {
     if (r4300->emumode != EMUMODE_PURE_INTERPRETER)
     {
+        if (size == 0)
+            l_RollbackCachedCodeFullInvalidates++;
+        else
+            l_RollbackCachedCodeRangeInvalidates++;
+
 #ifdef NEW_DYNAREC
         if (r4300->emumode == EMUMODE_DYNAREC)
         {
@@ -459,6 +510,21 @@ void invalidate_r4300_cached_code(struct r4300_core* r4300, uint32_t address, si
             invalidate_cached_code_hacktarux(r4300, address, size);
         }
     }
+}
+
+void r4300_cached_code_rollback_stats_reset(void)
+{
+    l_RollbackCachedCodeFullInvalidates = 0;
+    l_RollbackCachedCodeRangeInvalidates = 0;
+}
+
+void r4300_cached_code_rollback_stats_get(uint64_t* full_invalidate_count, uint64_t* range_invalidate_count)
+{
+    if (full_invalidate_count != NULL)
+        *full_invalidate_count = l_RollbackCachedCodeFullInvalidates;
+
+    if (range_invalidate_count != NULL)
+        *range_invalidate_count = l_RollbackCachedCodeRangeInvalidates;
 }
 
 
@@ -493,8 +559,9 @@ void generic_jump_to(struct r4300_core* r4300, uint32_t address)
 
 
 /* XXX: not really a good interface but it gets the job done... */
-void savestates_load_set_pc(struct r4300_core* r4300, uint32_t pc)
+void savestates_load_set_pc(struct r4300_core* r4300, uint32_t pc, int invalidate_cached_code)
 {
     generic_jump_to(r4300, pc);
-    invalidate_r4300_cached_code(r4300, 0, 0);
+    if (invalidate_cached_code)
+        invalidate_r4300_cached_code(r4300, 0, 0);
 }

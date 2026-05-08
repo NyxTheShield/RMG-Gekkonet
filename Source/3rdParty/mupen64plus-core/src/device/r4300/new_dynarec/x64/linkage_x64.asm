@@ -89,6 +89,7 @@ cglobal fp_exception
 cglobal jump_syscall
 cglobal jump_eret
 cglobal new_dyna_start
+cglobal new_dyna_resume
 cglobal invalidate_block_eax
 cglobal invalidate_block_ecx
 cglobal invalidate_block_edx
@@ -265,6 +266,24 @@ new_dyna_start:
     call    new_recompile_block
     mov     CCREG,    DWORD [rel g_dev_r4300_new_dynarec_hot_state_cycle_count]
     mov     rax,    QWORD[rel base_addr]
+    jmp     rax
+
+new_dyna_resume:
+    ;we must push an even # of registers to keep stack 16-byte aligned
+%ifdef WIN64
+    push rdi
+    push rsi
+%endif
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    push rbp
+    add     rsp,    -56
+    mov     ARG1_REG,    DWORD[rel g_dev_r4300_new_dynarec_hot_state_pcaddr]
+    call    get_addr_ht
+    mov     CCREG,    DWORD [rel g_dev_r4300_new_dynarec_hot_state_cycle_count]
     jmp     rax
 
 invalidate_block_eax:

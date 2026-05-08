@@ -320,6 +320,11 @@ EXPORT m64p_error CALL CoreDoCommand(m64p_command Command, int ParamInt, void *P
             if (!g_EmulatorRunning)
                 return M64ERR_INVALID_STATE;
             return main_rollback_run_frame(ParamInt) ? M64ERR_SUCCESS : M64ERR_INVALID_STATE;
+        case M64CMD_ROLLBACK_GET_RUN_FRAME_STATS:
+            if (ParamPtr == NULL)
+                return M64ERR_INPUT_ASSERT;
+            main_get_rollback_run_frame_stats((m64p_rollback_run_frame_stats*)ParamPtr);
+            return M64ERR_SUCCESS;
         case M64CMD_STOP:
             if (!g_EmulatorRunning)
                 return M64ERR_INVALID_STATE;

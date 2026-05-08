@@ -742,7 +742,7 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
         rollback_tlb_end = SDL_GetPerformanceCounter();
     }
 
-    savestates_load_set_pc(&dev->r4300, GETDATA(curr, uint32_t));
+    savestates_load_set_pc(&dev->r4300, GETDATA(curr, uint32_t), memory_data == NULL);
 
     *r4300_cp0_next_interrupt(&dev->r4300.cp0) = GETDATA(curr, uint32_t);
     curr += 4; /* here there used to be next_vi */
@@ -1603,7 +1603,7 @@ static int savestates_load_pj64(struct device* dev,
         poweron_dd(&dev->dd);
     }
 
-    savestates_load_set_pc(&dev->r4300, *r4300_cp0_last_addr(&dev->r4300.cp0));
+    savestates_load_set_pc(&dev->r4300, *r4300_cp0_last_addr(&dev->r4300.cp0), 1);
 
     // assert(savestateData+savestateSize == curr)
 

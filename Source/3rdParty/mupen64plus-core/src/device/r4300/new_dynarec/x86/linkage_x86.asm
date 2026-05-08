@@ -83,6 +83,7 @@ cglobal fp_exception
 cglobal jump_syscall
 cglobal jump_eret
 cglobal new_dyna_start
+cglobal new_dyna_resume
 cglobal invalidate_block_eax
 cglobal invalidate_block_ecx
 cglobal invalidate_block_edx
@@ -253,6 +254,18 @@ new_dyna_start:
     get_got_address
     mov     esi,    DWORD [find_local_data(g_dev_r4300_new_dynarec_hot_state_cycle_count)]
     jmp     DWORD [find_local_data(base_addr)]
+
+new_dyna_resume:
+    push    ebp
+    push    ebx
+    push    esi
+    push    edi
+    add     esp,    -8    ;align stack
+    get_got_address
+    push    DWORD [find_local_data(g_dev_r4300_new_dynarec_hot_state_pcaddr)]
+    call    get_addr_ht
+    mov     esi,    DWORD [find_local_data(g_dev_r4300_new_dynarec_hot_state_cycle_count)]
+    jmp     eax
 
 invalidate_block_eax:
     push    eax

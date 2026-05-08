@@ -115,6 +115,9 @@ void reset_gekko_log()
         g_GekkoLocalInputLogRepeats = 0;
         g_GekkoPacingLogFrames = 0;
         g_GekkoSpeedScale = 1.0;
+        g_GekkoLastLoadStateUs = 0;
+        g_GekkoLastSaveStateUs = 0;
+        g_GekkoLastRunFrameUs = 0;
         return;
     }
 
@@ -287,7 +290,7 @@ bool save_gekko_state(const PendingGekkoSave& save)
     g_GekkoLastSaveStateUs =
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count();
 
-    if (g_GekkoLogEnabled && g_GekkoLogFrames < kGekkoMaxLoggedFrames)
+    if (g_GekkoLogEnabled && (g_GekkoLogFrames < kGekkoMaxLoggedFrames || g_GekkoLastSaveStateUs >= 2000))
     {
         std::ostringstream stream;
         stream << "save_state result=ok frame=" << save.frame
@@ -315,7 +318,7 @@ bool load_gekko_state(const GekkoGameEvent* event)
     g_GekkoLastLoadStateUs =
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - beginTime).count();
 
-    if (g_GekkoLogEnabled && g_GekkoLogFrames < kGekkoMaxLoggedFrames)
+    if (g_GekkoLogEnabled && (g_GekkoLogFrames < kGekkoMaxLoggedFrames || g_GekkoLastLoadStateUs >= 2000))
     {
         std::ostringstream stream;
         stream << "load_state result=ok frame=" << event->data.load.frame
@@ -441,7 +444,7 @@ void apply_gekko_frame_pacing()
     double targetScale = 1.0;
     if (framesAhead >= kGekkoTimesyncDeadzone || framesAhead <= -kGekkoTimesyncDeadzone)
     {
-        targetScale = 1.0 + (static_cast<double>(framesAhead) * kGekkoTimesyncStrength);
+        targetScale = 1.0 - (static_cast<double>(framesAhead) * kGekkoTimesyncStrength);
         targetScale = std::clamp(targetScale, kGekkoTimesyncMinScale, kGekkoTimesyncMaxScale);
     }
 
@@ -633,10 +636,55 @@ int rollback_execute_begin_frame(void* userData)
                             std::chrono::steady_clock::now() - runFrameBeginTime).count();
                     if (g_GekkoLogEnabled)
                     {
+                        CoreRollbackRunFrameStats runFrameStats;
+                        const bool hasRunFrameStats = CoreRollbackGetRunFrameStats(runFrameStats);
                         std::ostringstream stream;
                         stream << "advance_frame result=rollback_frame_ok elapsed_us=" << g_GekkoLastRunFrameUs
                                << " rolling_back=" << (event->data.adv.rolling_back ? "true" : "false")
                                << " running_ahead=" << (event->data.adv.running_ahead ? "true" : "false");
+                        if (hasRunFrameStats)
+                        {
+                            stream << " core_total_us=" << runFrameStats.totalUs
+                                   << " r4300_us=" << runFrameStats.r4300Us
+                                   << " vi_us=" << runFrameStats.viUs
+                                   << " new_frame_us=" << runFrameStats.newFrameUs
+                                   << " cheats_us=" << runFrameStats.cheatsUs
+                                   << " pacing_us=" << runFrameStats.pacingUs
+                                   << " input_us=" << runFrameStats.inputUs
+                                   << " pause_us=" << runFrameStats.pauseUs
+                                   << " netplay_us=" << runFrameStats.netplayUs
+                                   << " dynarec_recompiles=" << runFrameStats.dynarecRecompileCount
+                                   << " dynarec_recompile_us=" << runFrameStats.dynarecRecompileUs
+                                   << " dynarec_invalidate_us=" << runFrameStats.dynarecInvalidateUs
+                                   << " dynarec_full_invalidates=" << runFrameStats.dynarecFullInvalidateCount
+                                   << " dynarec_range_invalidates=" << runFrameStats.dynarecRangeInvalidateCount
+                                   << " dynarec_block_invalidates=" << runFrameStats.dynarecBlockInvalidateCount
+                                   << " cached_code_full_invalidates=" << runFrameStats.cachedCodeFullInvalidateCount
+                                   << " cached_code_range_invalidates=" << runFrameStats.cachedCodeRangeInvalidateCount
+                                   << " emumode=" << runFrameStats.emumode
+                                   << " cp0_count_before=" << runFrameStats.cp0CountBefore
+                                   << " cp0_count_after=" << runFrameStats.cp0CountAfter
+                                   << " cp0_count_delta=" << (runFrameStats.cp0CountAfter - runFrameStats.cp0CountBefore)
+                                   << " next_interrupt_before=" << runFrameStats.nextInterruptBefore
+                                   << " next_interrupt_after=" << runFrameStats.nextInterruptAfter
+                                   << " pc_before=0x" << std::hex << runFrameStats.pcBefore
+                                   << " pc_after=0x" << runFrameStats.pcAfter
+                                   << " dynarec_pcaddr_before=0x" << runFrameStats.dynarecPcaddrBefore
+                                   << " dynarec_pcaddr_after=0x" << runFrameStats.dynarecPcaddrAfter
+                                   << " cp0_last_addr_before=0x" << runFrameStats.cp0LastAddrBefore
+                                   << " cp0_last_addr_after=0x" << runFrameStats.cp0LastAddrAfter << std::dec
+                                   << " dynarec_cycle_count_before=" << runFrameStats.dynarecCycleCountBefore
+                                   << " dynarec_cycle_count_after=" << runFrameStats.dynarecCycleCountAfter
+                                   << " dynarec_pending_exception_before=" << runFrameStats.dynarecPendingExceptionBefore
+                                   << " dynarec_pending_exception_after=" << runFrameStats.dynarecPendingExceptionAfter
+                                   << " dynarec_stop_before=" << runFrameStats.dynarecStopBefore
+                                   << " dynarec_stop_after=" << runFrameStats.dynarecStopAfter
+                                   << " delay_slot_before=" << runFrameStats.delaySlotBefore
+                                   << " delay_slot_after=" << runFrameStats.delaySlotAfter
+                                   << " current_frame_before=" << runFrameStats.currentFrameBefore
+                                   << " current_frame_after=" << runFrameStats.currentFrameAfter
+                                   << " output_flags=" << runFrameStats.outputFlags;
+                        }
                         write_gekko_log(stream.str());
                     }
                     g_GekkoHasLatchedInput = false;
@@ -771,6 +819,8 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
                << " local_delay=" << localDelay
                << " clamped_local_delay=" << clampedLocalDelay
                << " prediction_window=" << predictionWindow
+               << " cpu_mode=dynarec"
+               << " dynarec_rollback=pumped"
                << " state_capacity=" << kGekkoStateCapacity;
         write_gekko_log(stream.str());
     }

@@ -25,6 +25,12 @@
 #include <sys/types.h> // needed for u_int, u_char, etc
 #include <assert.h>
 
+#ifdef USE_SDL3
+#include <SDL3/SDL.h>
+#else
+#include <SDL.h>
+#endif
+
 #if defined(__APPLE__)
 #define MAP_ANONYMOUS MAP_ANON
 #endif
@@ -297,6 +303,27 @@ static struct ll_entry *jump_in[4096];
 static struct ll_entry *jump_dirty[4096];
 static struct ll_entry *jump_out[4096];
 static unsigned char restore_candidate[512];
+static struct new_dynarec_rollback_stats rollback_stats;
+
+static uint64_t rollback_profile_now_us(void)
+{
+  uint64_t counter = SDL_GetPerformanceCounter();
+  uint64_t frequency = SDL_GetPerformanceFrequency();
+  return (counter / frequency) * 1000000ULL + ((counter % frequency) * 1000000ULL) / frequency;
+}
+
+void new_dynarec_rollback_stats_reset(void)
+{
+  memset(&rollback_stats, 0, sizeof(rollback_stats));
+}
+
+void new_dynarec_rollback_stats_get(struct new_dynarec_rollback_stats* stats)
+{
+  if (stats == NULL)
+    return;
+
+  *stats = rollback_stats;
+}
 
 #if COUNT_NOTCOMPILEDS
 static int notcompiledCount = 0;
@@ -2816,6 +2843,7 @@ static void invalidate_page(u_int page)
 void invalidate_block(u_int block)
 {
   u_int page;
+  rollback_stats.block_invalidate_count++;
   page=block^0x80000;
   if(block<0x100000&&page>262143&&g_dev.r4300.cp0.tlb.LUT_r[block]) page=(g_dev.r4300.cp0.tlb.LUT_r[block]^0x80000000)>>12;
   if(page>2048) page=2048+(page&2047);
@@ -2925,16 +2953,19 @@ static void invalidate_all_pages(void)
 
 void invalidate_cached_code_new_dynarec(struct r4300_core* r4300, uint32_t address, size_t size)
 {
+    uint64_t rollback_invalidate_begin = rollback_profile_now_us();
     size_t i;
     size_t begin;
     size_t end;
 
     if (size == 0)
     {
+        rollback_stats.full_invalidate_count++;
         invalidate_all_pages();
     }
     else
     {
+        rollback_stats.range_invalidate_count++;
         begin = address >> 12;
         end = (address+size-1) >> 12;
 
@@ -2944,6 +2975,8 @@ void invalidate_cached_code_new_dynarec(struct r4300_core* r4300, uint32_t addre
             }
         }
     }
+
+    rollback_stats.invalidate_us += rollback_profile_now_us() - rollback_invalidate_begin;
 }
 
 // If a code block was found to be unmodified (bit was set in
@@ -8771,9 +8804,11 @@ void new_dynarec_cleanup(void)
 
 int new_recompile_block(int addr)
 {
+  uint64_t rollback_recompile_begin = rollback_profile_now_us();
 #if defined(RECOMPILER_DEBUG) && !defined(RECOMP_DBG)
   recomp_dbg_block(addr);
 #endif
+  rollback_stats.recompile_count++;
 
   assem_debug("NOTCOMPILED: addr = %x -> %x", (int)addr, (intptr_t)out);
 #if COUNT_NOTCOMPILEDS
@@ -8813,6 +8848,7 @@ int new_recompile_block(int addr)
     else {
       assem_debug("Compile at unmapped memory address: %x ", (int)addr);
       //assem_debug("start: %x next: %x",g_dev.r4300.new_dynarec_hot_state.memory_map[start>>12],g_dev.r4300.new_dynarec_hot_state.memory_map[(start+4096)>>12]);
+      rollback_stats.recompile_us += rollback_profile_now_us() - rollback_recompile_begin;
       return 1; // Caller will invoke exception handler
     }
     //DebugMessage(M64MSG_VERBOSE, "source= %x",(intptr_t)source);
@@ -11899,5 +11935,6 @@ int new_recompile_block(int addr)
     }
     expirep=(expirep+1)&65535;
   }
+  rollback_stats.recompile_us += rollback_profile_now_us() - rollback_recompile_begin;
   return 0;
 }

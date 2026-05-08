@@ -68,6 +68,7 @@
 #include "device/controllers/paks/transferpak.h"
 #include "device/gb/gb_cart.h"
 #include "device/pif/bootrom_hle.h"
+#include "device/r4300/new_dynarec/new_dynarec.h"
 #include "eventloop.h"
 #include "main.h"
 #include "osal/files.h"
@@ -142,6 +143,7 @@ static int   l_RollbackExecuteActive = 0;
 static int   l_RollbackSingleStepActive = 0;
 static int   l_RollbackVisibleStepActive = 0;
 static int   l_RollbackVisibleStepCompleted = 0;
+static m64p_rollback_run_frame_stats l_RollbackRunFrameStats;
 
 static osd_message_t *l_msgVol = NULL;
 static osd_message_t *l_msgFF = NULL;
@@ -651,6 +653,13 @@ void main_set_rollback_timesync_scale(double scale)
     l_RollbackTimesyncScale = scale;
 }
 
+static uint64_t rollback_profile_now_us(void)
+{
+    uint64_t counter = SDL_GetPerformanceCounter();
+    uint64_t frequency = SDL_GetPerformanceFrequency();
+    return (counter / frequency) * 1000000ULL + ((counter % frequency) * 1000000ULL) / frequency;
+}
+
 void main_run_frames(int frames, int output_flags)
 {
     if (frames < 1)
@@ -682,6 +691,10 @@ void main_set_rollback_execute_callbacks(m64p_rollback_execute_callbacks* callba
         l_RollbackExecuteActive = 0;
         l_RollbackVisibleStepActive = 0;
         l_RollbackVisibleStepCompleted = 0;
+#ifdef NEW_DYNAREC
+        new_dynarec_rollback_stats_reset();
+#endif
+        r4300_cached_code_rollback_stats_reset();
         return;
     }
 
@@ -689,6 +702,10 @@ void main_set_rollback_execute_callbacks(m64p_rollback_execute_callbacks* callba
     l_RollbackExecuteActive =
         (l_RollbackExecuteCallbacks.begin_frame != NULL &&
          l_RollbackExecuteCallbacks.end_frame != NULL);
+#ifdef NEW_DYNAREC
+    new_dynarec_rollback_stats_reset();
+#endif
+    r4300_cached_code_rollback_stats_reset();
 }
 
 int main_rollback_execute_active(void)
@@ -726,6 +743,33 @@ int main_rollback_run_frame(int output_flags)
     int old_audio = l_FrameOutputAudio;
     int old_pacing = l_FrameOutputPacing;
     int old_input = l_FrameOutputInput;
+    uint32_t* cp0_regs;
+    uint64_t total_begin;
+    uint64_t r4300_begin;
+    int result;
+
+    memset(&l_RollbackRunFrameStats, 0, sizeof(l_RollbackRunFrameStats));
+    l_RollbackRunFrameStats.output_flags = output_flags;
+    l_RollbackRunFrameStats.emumode = g_dev.r4300.emumode;
+    cp0_regs = r4300_cp0_regs(&g_dev.r4300.cp0);
+    l_RollbackRunFrameStats.cp0_count_before = cp0_regs[CP0_COUNT_REG];
+    l_RollbackRunFrameStats.next_interrupt_before = *r4300_cp0_next_interrupt(&g_dev.r4300.cp0);
+    l_RollbackRunFrameStats.pc_before = *r4300_pc(&g_dev.r4300);
+    l_RollbackRunFrameStats.current_frame_before = l_CurrentFrame;
+    l_RollbackRunFrameStats.cp0_last_addr_before = *r4300_cp0_last_addr(&g_dev.r4300.cp0);
+    l_RollbackRunFrameStats.delay_slot_before = g_dev.r4300.delay_slot;
+#ifdef NEW_DYNAREC
+    l_RollbackRunFrameStats.dynarec_pcaddr_before = g_dev.r4300.new_dynarec_hot_state.pcaddr;
+    l_RollbackRunFrameStats.dynarec_cycle_count_before = g_dev.r4300.new_dynarec_hot_state.cycle_count;
+    l_RollbackRunFrameStats.dynarec_pending_exception_before = g_dev.r4300.new_dynarec_hot_state.pending_exception;
+    l_RollbackRunFrameStats.dynarec_stop_before = g_dev.r4300.new_dynarec_hot_state.stop;
+#endif
+    total_begin = rollback_profile_now_us();
+
+#ifdef NEW_DYNAREC
+    new_dynarec_rollback_stats_reset();
+#endif
+    r4300_cached_code_rollback_stats_reset();
 
     main_set_frame_output(
         (output_flags & M64FRAME_OUTPUT_VIDEO) != 0,
@@ -734,15 +778,51 @@ int main_rollback_run_frame(int output_flags)
         (output_flags & M64FRAME_OUTPUT_INPUT) != 0);
 
     l_RollbackSingleStepActive = 1;
-    if (!run_r4300_current(&g_dev.r4300)) {
-        l_RollbackSingleStepActive = 0;
-        main_set_frame_output(old_video, old_audio, old_pacing, old_input);
-        return 0;
-    }
+    r4300_begin = rollback_profile_now_us();
+    result = run_r4300_current(&g_dev.r4300);
+    l_RollbackRunFrameStats.r4300_us = rollback_profile_now_us() - r4300_begin;
     l_RollbackSingleStepActive = 0;
+    l_RollbackRunFrameStats.cp0_count_after = cp0_regs[CP0_COUNT_REG];
+    l_RollbackRunFrameStats.next_interrupt_after = *r4300_cp0_next_interrupt(&g_dev.r4300.cp0);
+    l_RollbackRunFrameStats.pc_after = *r4300_pc(&g_dev.r4300);
+    l_RollbackRunFrameStats.current_frame_after = l_CurrentFrame;
+    l_RollbackRunFrameStats.cp0_last_addr_after = *r4300_cp0_last_addr(&g_dev.r4300.cp0);
+    l_RollbackRunFrameStats.delay_slot_after = g_dev.r4300.delay_slot;
+#ifdef NEW_DYNAREC
+    l_RollbackRunFrameStats.dynarec_pcaddr_after = g_dev.r4300.new_dynarec_hot_state.pcaddr;
+    l_RollbackRunFrameStats.dynarec_cycle_count_after = g_dev.r4300.new_dynarec_hot_state.cycle_count;
+    l_RollbackRunFrameStats.dynarec_pending_exception_after = g_dev.r4300.new_dynarec_hot_state.pending_exception;
+    l_RollbackRunFrameStats.dynarec_stop_after = g_dev.r4300.new_dynarec_hot_state.stop;
+#endif
 
     main_set_frame_output(old_video, old_audio, old_pacing, old_input);
-    return 1;
+#ifdef NEW_DYNAREC
+    {
+        struct new_dynarec_rollback_stats dynarec_stats;
+        new_dynarec_rollback_stats_get(&dynarec_stats);
+        l_RollbackRunFrameStats.dynarec_recompile_count = dynarec_stats.recompile_count;
+        l_RollbackRunFrameStats.dynarec_recompile_us = dynarec_stats.recompile_us;
+        l_RollbackRunFrameStats.dynarec_invalidate_us = dynarec_stats.invalidate_us;
+        l_RollbackRunFrameStats.dynarec_full_invalidate_count = dynarec_stats.full_invalidate_count;
+        l_RollbackRunFrameStats.dynarec_range_invalidate_count = dynarec_stats.range_invalidate_count;
+        l_RollbackRunFrameStats.dynarec_block_invalidate_count = dynarec_stats.block_invalidate_count;
+        new_dynarec_rollback_stats_reset();
+    }
+#endif
+    r4300_cached_code_rollback_stats_get(
+        &l_RollbackRunFrameStats.cached_code_full_invalidate_count,
+        &l_RollbackRunFrameStats.cached_code_range_invalidate_count);
+    r4300_cached_code_rollback_stats_reset();
+    l_RollbackRunFrameStats.total_us = rollback_profile_now_us() - total_begin;
+    return result != 0;
+}
+
+void main_get_rollback_run_frame_stats(m64p_rollback_run_frame_stats* stats)
+{
+    if (stats == NULL)
+        return;
+
+    *stats = l_RollbackRunFrameStats;
 }
 
 int main_frame_video_enabled(void)
@@ -1250,24 +1330,58 @@ void new_vi(void)
 {
     int frame_output_pacing = main_frame_pacing_enabled();
     int frame_output_input = main_frame_frontend_input_enabled();
+    uint64_t rollback_vi_begin = 0;
+    uint64_t rollback_step_begin = 0;
+    int rollback_profile_active = l_RollbackSingleStepActive;
 
+    if (rollback_profile_active)
+        rollback_vi_begin = rollback_profile_now_us();
+
+    if (rollback_profile_active)
+        rollback_step_begin = rollback_profile_now_us();
     new_frame();
+    if (rollback_profile_active)
+        l_RollbackRunFrameStats.new_frame_us += rollback_profile_now_us() - rollback_step_begin;
+
 #if defined(PROFILE)
     timed_sections_refresh();
 #endif
 
+    if (rollback_profile_active)
+        rollback_step_begin = rollback_profile_now_us();
     gs_apply_cheats(&g_cheat_ctx);
+    if (rollback_profile_active)
+        l_RollbackRunFrameStats.cheats_us += rollback_profile_now_us() - rollback_step_begin;
 
+    if (rollback_profile_active)
+        rollback_step_begin = rollback_profile_now_us();
     if (frame_output_pacing)
         apply_speed_limiter();
+    if (rollback_profile_active)
+        l_RollbackRunFrameStats.pacing_us += rollback_profile_now_us() - rollback_step_begin;
 
+    if (rollback_profile_active)
+        rollback_step_begin = rollback_profile_now_us();
     if (frame_output_input)
         main_check_inputs();
+    if (rollback_profile_active)
+        l_RollbackRunFrameStats.input_us += rollback_profile_now_us() - rollback_step_begin;
 
+    if (rollback_profile_active)
+        rollback_step_begin = rollback_profile_now_us();
     if (main_frame_pacing_enabled())
         pause_loop();
+    if (rollback_profile_active)
+        l_RollbackRunFrameStats.pause_us += rollback_profile_now_us() - rollback_step_begin;
 
+    if (rollback_profile_active)
+        rollback_step_begin = rollback_profile_now_us();
     netplay_check_sync(&g_dev.r4300.cp0);
+    if (rollback_profile_active)
+        l_RollbackRunFrameStats.netplay_us += rollback_profile_now_us() - rollback_step_begin;
+
+    if (rollback_profile_active)
+        l_RollbackRunFrameStats.vi_us += rollback_profile_now_us() - rollback_vi_begin;
 }
 
 static void main_switch_pak(int control_id)
@@ -1840,6 +1954,11 @@ m64p_error main_run(void)
 
     //During netplay, player 1 is the source of truth for these settings
     netplay_sync_settings(&count_per_op, &count_per_op_denom_pot, &disable_extra_mem, &si_dma_duration, &emumode, &no_compiled_jump);
+    if (main_rollback_execute_active())
+    {
+        emumode = 2;
+        no_compiled_jump = 0;
+    }
 
     rdram_size = (disable_extra_mem == 0) ? 0x800000 : 0x400000;
 

@@ -541,7 +541,7 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
             }
             else
             {
-                CoreSettingsSetValue(SettingsID::Core_CPU_Emulator, 1);
+                CoreSettingsSetValue(SettingsID::Core_CPU_Emulator, 2);
                 netplay_ret = rmgk_gekko::start_p2p_session("rmgk-gekko",
                     2, static_cast<int>(sizeof(uint32_t)), player, static_cast<unsigned short>(port),
                     remoteAddress.c_str(), static_cast<unsigned short>(remotePort), frameDelay);

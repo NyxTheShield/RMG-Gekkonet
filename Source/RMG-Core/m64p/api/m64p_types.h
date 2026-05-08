@@ -72,6 +72,47 @@ typedef struct {
   int (*begin_frame)(void *user_data);
   int (*end_frame)(void *user_data);
 } m64p_rollback_execute_callbacks;
+typedef struct {
+  uint64_t total_us;
+  uint64_t r4300_us;
+  uint64_t vi_us;
+  uint64_t new_frame_us;
+  uint64_t cheats_us;
+  uint64_t pacing_us;
+  uint64_t input_us;
+  uint64_t pause_us;
+  uint64_t netplay_us;
+  uint64_t dynarec_recompile_count;
+  uint64_t dynarec_recompile_us;
+  uint64_t dynarec_invalidate_us;
+  uint64_t dynarec_full_invalidate_count;
+  uint64_t dynarec_range_invalidate_count;
+  uint64_t dynarec_block_invalidate_count;
+  uint64_t cached_code_full_invalidate_count;
+  uint64_t cached_code_range_invalidate_count;
+  uint32_t emumode;
+  uint32_t cp0_count_before;
+  uint32_t cp0_count_after;
+  uint32_t next_interrupt_before;
+  uint32_t next_interrupt_after;
+  uint32_t pc_before;
+  uint32_t pc_after;
+  uint32_t current_frame_before;
+  uint32_t current_frame_after;
+  uint32_t dynarec_pcaddr_before;
+  uint32_t dynarec_pcaddr_after;
+  uint32_t cp0_last_addr_before;
+  uint32_t cp0_last_addr_after;
+  int32_t  dynarec_cycle_count_before;
+  int32_t  dynarec_cycle_count_after;
+  int32_t  dynarec_pending_exception_before;
+  int32_t  dynarec_pending_exception_after;
+  int32_t  dynarec_stop_before;
+  int32_t  dynarec_stop_after;
+  int32_t  delay_slot_before;
+  int32_t  delay_slot_after;
+  int      output_flags;
+} m64p_rollback_run_frame_stats;
 
 typedef enum {
   M64TYPE_INT = 1,
@@ -192,6 +233,7 @@ typedef enum {
   M64CMD_ROLLBACK_SAMPLE_INPUT,
   M64CMD_ROLLBACK_EXECUTE,
   M64CMD_ROLLBACK_RUN_FRAME,
+  M64CMD_ROLLBACK_GET_RUN_FRAME_STATS,
   M64CMD_ROLLBACK_SET_VERBOSE_STATS,
   M64CMD_ROLLBACK_SET_TIMESYNC_SCALE,
   M64CMD_FRAME_OUTPUT_SET
