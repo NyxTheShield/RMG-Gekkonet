@@ -177,6 +177,8 @@ namespace
 {
 constexpr int kRollbackDebugReplayFrames = 1200;
 constexpr int kRollbackDebugReplayPlayers = 4;
+constexpr int kRollbackDebugStressInterval = 10;
+constexpr int kRollbackDebugStressRollbackFrames = 5;
 constexpr const char* kRollbackDebugReplayFilePath = "rollback_sanity_test.replay";
 constexpr const char* kRollbackDebugReplayLogPath = "rollback_sanity_test.log";
 constexpr uint32_t kRollbackDebugReplayMagic = 0x52534452;
@@ -186,7 +188,8 @@ enum class RollbackDebugReplayMode
 {
     Idle,
     Recording,
-    Verifying
+    Verifying,
+    Stressing
 };
 
 struct RollbackDebugReplayState
@@ -195,6 +198,7 @@ struct RollbackDebugReplayState
     RollbackDebugReplayMode mode = RollbackDebugReplayMode::Idle;
     CoreRollbackState initialState;
     CoreRollbackState finalState;
+    std::array<CoreRollbackState, kRollbackDebugStressRollbackFrames + 1> stressCheckpoints;
     std::vector<std::array<uint32_t, kRollbackDebugReplayPlayers>> inputs;
     std::vector<uint64_t> inputHashes;
     std::vector<uint64_t> frameHashes;
@@ -209,11 +213,21 @@ struct RollbackDebugReplayState
     uint64_t recordedInputHash = 0;
     uint64_t replayedInputHash = 0;
     uint64_t finalHash = 0;
+    size_t stressRollbackCount = 0;
+    size_t stressRollbackFrames = 0;
+    size_t stressResimulatedFrames = 0;
+    int stressResumeFrame = 0;
+    bool countReplayInputHash = true;
+    bool stressResimulating = false;
     bool verifyWithGraphics = false;
     bool ready = false;
 };
 
 RollbackDebugReplayState g_RollbackDebugReplay;
+
+size_t RollbackDebugStressCheckpointIndex(int frame);
+void FreeRollbackDebugStressCheckpoints();
+bool SaveRollbackDebugStressCheckpoint(int frame);
 
 bool WriteReplayBytes(std::ofstream& file, const void* data, size_t size)
 {
@@ -497,6 +511,7 @@ bool LoadRollbackDebugReplayFile(std::string& error)
         std::lock_guard<std::mutex> lock(g_RollbackDebugReplay.mutex);
         oldState = g_RollbackDebugReplay.initialState;
         oldFinalState = g_RollbackDebugReplay.finalState;
+        FreeRollbackDebugStressCheckpoints();
         g_RollbackDebugReplay.initialState = replayState;
         g_RollbackDebugReplay.finalState = replayFinalState;
         g_RollbackDebugReplay.inputs = std::move(replayInputs);
@@ -572,6 +587,26 @@ uint64_t HashRollbackState(const CoreRollbackState& state)
     return hash;
 }
 
+size_t RollbackDebugStressCheckpointIndex(int frame)
+{
+    return static_cast<size_t>(frame % static_cast<int>(g_RollbackDebugReplay.stressCheckpoints.size()));
+}
+
+void FreeRollbackDebugStressCheckpoints()
+{
+    for (auto& checkpoint : g_RollbackDebugReplay.stressCheckpoints)
+    {
+        CoreRollbackFreeGameState(checkpoint);
+    }
+}
+
+bool SaveRollbackDebugStressCheckpoint(int frame)
+{
+    const size_t checkpointIndex = RollbackDebugStressCheckpointIndex(frame);
+    CoreRollbackFreeGameState(g_RollbackDebugReplay.stressCheckpoints[checkpointIndex]);
+    return CoreRollbackSaveGameState(g_RollbackDebugReplay.stressCheckpoints[checkpointIndex], CoreGetCurrentFrameCount());
+}
+
 int FirstRollbackStatePayloadDifference(const CoreRollbackState& expected, const CoreRollbackState& actual, int& expectedLen, int& actualLen)
 {
     const unsigned char* expectedBuffer;
@@ -643,6 +678,9 @@ void WriteRollbackDebugReplayLog(const std::string& phase,
     }
     log << "recorded_frame_hashes=" << g_RollbackDebugReplay.frameHashes.size() << "\n";
     log << "verify_frame_index=" << g_RollbackDebugReplay.verifyFrameIndex << "\n";
+    log << "stress_rollback_count=" << g_RollbackDebugReplay.stressRollbackCount << "\n";
+    log << "stress_rollback_frames=" << g_RollbackDebugReplay.stressRollbackFrames << "\n";
+    log << "stress_resimulated_frames=" << g_RollbackDebugReplay.stressResimulatedFrames << "\n";
     log << "first_mismatch_frame=" << g_RollbackDebugReplay.firstMismatchFrame << "\n";
     log << "first_mismatch_expected_hash=" << g_RollbackDebugReplay.firstMismatchExpectedHash << "\n";
     log << "first_mismatch_actual_hash=" << g_RollbackDebugReplay.firstMismatchActualHash << "\n";
@@ -722,7 +760,8 @@ int RollbackDebugReplayInputCallback(void* values, int size, int players)
         return 1;
     }
 
-    if (g_RollbackDebugReplay.mode == RollbackDebugReplayMode::Verifying)
+    if (g_RollbackDebugReplay.mode == RollbackDebugReplayMode::Verifying ||
+        g_RollbackDebugReplay.mode == RollbackDebugReplayMode::Stressing)
     {
         if (g_RollbackDebugReplay.verifyInputIndex >= g_RollbackDebugReplay.inputs.size())
         {
@@ -741,8 +780,11 @@ int RollbackDebugReplayInputCallback(void* values, int size, int players)
                 g_RollbackDebugReplay.firstInputMismatchActualHash = inputHash;
             }
         }
-        g_RollbackDebugReplay.replayedInputHash =
-            AppendRollbackDebugReplayHash(g_RollbackDebugReplay.replayedInputHash, inputHash);
+        if (g_RollbackDebugReplay.countReplayInputHash)
+        {
+            g_RollbackDebugReplay.replayedInputHash =
+                AppendRollbackDebugReplayHash(g_RollbackDebugReplay.replayedInputHash, inputHash);
+        }
         const int playerCount = std::min(players, kRollbackDebugReplayPlayers);
         for (int i = 0; i < playerCount; i++)
         {
@@ -805,6 +847,7 @@ MainWindow::~MainWindow()
     CoreRollbackFreeGameState(this->ui_RollbackDebugState);
     CoreRollbackFreeGameState(g_RollbackDebugReplay.initialState);
     CoreRollbackFreeGameState(g_RollbackDebugReplay.finalState);
+    FreeRollbackDebugStressCheckpoints();
 }
 
 bool MainWindow::Init(QApplication* app, bool showUI, bool launchROM)
@@ -1895,6 +1938,7 @@ void MainWindow::updateActions(bool inEmulation, bool isPaused)
     this->action_Rollback_StartDebugReplay->setEnabled(inEmulation && isPaused && rollbackDebugReplayIdle);
     this->action_Rollback_VerifyDebugReplay->setEnabled(inEmulation && isPaused && rollbackDebugReplayReady && rollbackDebugReplayIdle);
     this->action_Rollback_VerifyDebugReplayWithGraphics->setEnabled(inEmulation && isPaused && rollbackDebugReplayReady && rollbackDebugReplayIdle);
+    this->action_Rollback_StressDebugReplay->setEnabled(inEmulation && isPaused && rollbackDebugReplayReady && rollbackDebugReplayIdle);
 
     // configure keybindings for speed factor
     QAction* speedActions[] =
@@ -2156,7 +2200,7 @@ void MainWindow::configureActions(void)
         this->action_System_GSButton, this->action_System_Exit,
         this->action_Rollback_SaveGgpoState, this->action_Rollback_LoadGgpoState,
         this->action_Rollback_StartDebugReplay, this->action_Rollback_VerifyDebugReplay,
-        this->action_Rollback_VerifyDebugReplayWithGraphics,
+        this->action_Rollback_VerifyDebugReplayWithGraphics, this->action_Rollback_StressDebugReplay,
         // Settings actions
         this->action_Settings_Graphics, this->action_Settings_Audio,
         this->action_Settings_Rsp, this->action_Settings_Input,
@@ -2288,6 +2332,7 @@ void MainWindow::connectActionSignals(void)
     connect(this->action_Rollback_StartDebugReplay, &QAction::triggered, this, &MainWindow::on_Action_Rollback_StartDebugReplay);
     connect(this->action_Rollback_VerifyDebugReplay, &QAction::triggered, this, &MainWindow::on_Action_Rollback_VerifyDebugReplay);
     connect(this->action_Rollback_VerifyDebugReplayWithGraphics, &QAction::triggered, this, &MainWindow::on_Action_Rollback_VerifyDebugReplayWithGraphics);
+    connect(this->action_Rollback_StressDebugReplay, &QAction::triggered, this, &MainWindow::on_Action_Rollback_StressDebugReplay);
 
     connect(this->action_Settings_Graphics, &QAction::triggered, this, &MainWindow::on_Action_Settings_Graphics);
     connect(this->action_Settings_Audio, &QAction::triggered, this, &MainWindow::on_Action_Settings_Audio);
@@ -4686,6 +4731,10 @@ void MainWindow::on_Core_StateCallback(CoreStateCallbackType type, int value)
                     CoreRollbackFreeGameState(finalState);
                     this->updateActions(true, true);
                 }
+                else if (replayMode == RollbackDebugReplayMode::Stressing)
+                {
+                    this->continueStressDebugReplay();
+                }
             }
         } break;
         case CoreStateCallbackType::SaveStateSlot:
@@ -4865,6 +4914,12 @@ void MainWindow::on_Action_Rollback_StartDebugReplay(void)
         g_RollbackDebugReplay.recordedInputHash = 0;
         g_RollbackDebugReplay.replayedInputHash = 0;
         g_RollbackDebugReplay.finalHash = 0;
+        g_RollbackDebugReplay.stressRollbackCount = 0;
+        g_RollbackDebugReplay.stressRollbackFrames = 0;
+        g_RollbackDebugReplay.stressResimulatedFrames = 0;
+        g_RollbackDebugReplay.stressResumeFrame = 0;
+        g_RollbackDebugReplay.countReplayInputHash = true;
+        g_RollbackDebugReplay.stressResimulating = false;
         g_RollbackDebugReplay.verifyWithGraphics = false;
         g_RollbackDebugReplay.ready = false;
         g_RollbackDebugReplay.mode = RollbackDebugReplayMode::Idle;
@@ -4919,6 +4974,11 @@ void MainWindow::on_Action_Rollback_VerifyDebugReplayWithGraphics(void)
     this->startVerifyDebugReplay(true);
 }
 
+void MainWindow::on_Action_Rollback_StressDebugReplay(void)
+{
+    this->runStressDebugReplay();
+}
+
 void MainWindow::startVerifyDebugReplay(bool withGraphics)
 {
     if (!CoreIsEmulationPaused())
@@ -4951,6 +5011,12 @@ void MainWindow::startVerifyDebugReplay(bool withGraphics)
         g_RollbackDebugReplay.firstMismatchExpectedHash = 0;
         g_RollbackDebugReplay.firstMismatchActualHash = 0;
         g_RollbackDebugReplay.replayedInputHash = 0;
+        g_RollbackDebugReplay.stressRollbackCount = 0;
+        g_RollbackDebugReplay.stressRollbackFrames = 0;
+        g_RollbackDebugReplay.stressResimulatedFrames = 0;
+        g_RollbackDebugReplay.stressResumeFrame = 0;
+        g_RollbackDebugReplay.countReplayInputHash = true;
+        g_RollbackDebugReplay.stressResimulating = false;
         g_RollbackDebugReplay.verifyWithGraphics = withGraphics;
     }
 
@@ -4966,7 +5032,7 @@ void MainWindow::startVerifyDebugReplay(bool withGraphics)
         return;
     }
 
-    CoreRollbackState loadedInitialState;
+    CoreRollbackState loadedInitialState = {};
     if (CoreRollbackSaveGameState(loadedInitialState, CoreGetCurrentFrameCount()))
     {
         CoreRollbackState expectedInitialState;
@@ -5019,6 +5085,277 @@ void MainWindow::startVerifyDebugReplay(bool withGraphics)
         }
         this->updateActions(true, true);
         this->showErrorMessage("Debug Replay Verify Run Failed", QString::fromStdString(CoreGetError()));
+    }
+}
+
+void MainWindow::runStressDebugReplay(void)
+{
+    if (!CoreIsEmulationPaused())
+    {
+        this->setDebugReplayStatusMessage("Pause emulation before running rollback stress replay");
+        return;
+    }
+
+    std::string replayFileError;
+    if (!LoadRollbackDebugReplayFile(replayFileError))
+    {
+        this->setDebugReplayStatusMessage("Could not load debug replay: " + replayFileError);
+        WriteRollbackDebugReplayEventLog("stress_load_failed", replayFileError);
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_RollbackDebugReplay.mutex);
+        if (!g_RollbackDebugReplay.ready || g_RollbackDebugReplay.initialState.buffer == nullptr)
+        {
+            this->setDebugReplayStatusMessage("No debug replay recorded yet");
+            return;
+        }
+        g_RollbackDebugReplay.verifyInputIndex = 0;
+        g_RollbackDebugReplay.verifyFrameIndex = 0;
+        g_RollbackDebugReplay.firstInputMismatchFrame = -1;
+        g_RollbackDebugReplay.firstInputMismatchExpectedHash = 0;
+        g_RollbackDebugReplay.firstInputMismatchActualHash = 0;
+        g_RollbackDebugReplay.firstMismatchFrame = -1;
+        g_RollbackDebugReplay.firstMismatchExpectedHash = 0;
+        g_RollbackDebugReplay.firstMismatchActualHash = 0;
+        g_RollbackDebugReplay.replayedInputHash = 0;
+        g_RollbackDebugReplay.stressRollbackCount = 0;
+        g_RollbackDebugReplay.stressRollbackFrames = 0;
+        g_RollbackDebugReplay.stressResimulatedFrames = 0;
+        g_RollbackDebugReplay.stressResumeFrame = 0;
+        g_RollbackDebugReplay.countReplayInputHash = true;
+        g_RollbackDebugReplay.stressResimulating = false;
+        g_RollbackDebugReplay.verifyWithGraphics = false;
+    }
+
+    if (!CoreRollbackSetDeterministic(true))
+    {
+        this->showErrorMessage("Rollback Stress Deterministic Mode Failed", QString::fromStdString(CoreGetError()));
+        return;
+    }
+
+    if (!CoreRollbackLoadGameState(g_RollbackDebugReplay.initialState))
+    {
+        this->showErrorMessage("Rollback Stress Load Initial State Failed", QString::fromStdString(CoreGetError()));
+        return;
+    }
+
+    CoreRollbackState loadedInitialState = {};
+    if (CoreRollbackSaveGameState(loadedInitialState, CoreGetCurrentFrameCount()))
+    {
+        CoreRollbackState expectedInitialState;
+        size_t recordedInputFrames;
+        {
+            std::lock_guard<std::mutex> lock(g_RollbackDebugReplay.mutex);
+            expectedInitialState = g_RollbackDebugReplay.initialState;
+            recordedInputFrames = g_RollbackDebugReplay.inputs.size();
+        }
+        const uint64_t expectedInitialHash = HashRollbackState(expectedInitialState);
+        const uint64_t loadedInitialHash = HashRollbackState(loadedInitialState);
+        WriteRollbackDebugReplayLog("stress_initial_load", expectedInitialHash == loadedInitialHash,
+            expectedInitialHash, loadedInitialHash, recordedInputFrames, 0, expectedInitialState, loadedInitialState);
+        if (expectedInitialHash != loadedInitialHash)
+        {
+            CoreRollbackFreeGameState(loadedInitialState);
+            this->setDebugReplayStatusMessage("Rollback stress initial load mismatch; wrote " + std::string(kRollbackDebugReplayLogPath));
+            return;
+        }
+    }
+    CoreRollbackFreeGameState(loadedInitialState);
+
+    FreeRollbackDebugStressCheckpoints();
+    if (!SaveRollbackDebugStressCheckpoint(0))
+    {
+        this->showErrorMessage("Rollback Stress Save Initial Checkpoint Failed", QString::fromStdString(CoreGetError()));
+        return;
+    }
+
+    if (!CoreRollbackSetInputCallback(RollbackDebugReplayInputCallback))
+    {
+        FreeRollbackDebugStressCheckpoints();
+        this->showErrorMessage("Rollback Stress Input Callback Failed", QString::fromStdString(CoreGetError()));
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_RollbackDebugReplay.mutex);
+        g_RollbackDebugReplay.mode = RollbackDebugReplayMode::Stressing;
+    }
+
+    this->updateActions(true, true);
+    this->setDebugReplayStatusMessage("Stress replay with graphics: rollback 5 frames every 10 frames");
+    WriteRollbackDebugReplayEventLog("stress_started", "with graphics; rollback 5 frames every 10 frames");
+
+    {
+        std::lock_guard<std::mutex> lock(g_RollbackDebugReplay.mutex);
+        g_RollbackDebugReplay.verifyInputIndex = 0;
+        g_RollbackDebugReplay.countReplayInputHash = true;
+    }
+    if (!CoreRunFrames(1, CoreFrameOutput_All))
+    {
+        CoreRollbackSetInputCallback(nullptr);
+        WriteRollbackDebugReplayEventLog("stress_failed", CoreGetError());
+        {
+            std::lock_guard<std::mutex> lock(g_RollbackDebugReplay.mutex);
+            g_RollbackDebugReplay.mode = RollbackDebugReplayMode::Idle;
+            g_RollbackDebugReplay.countReplayInputHash = true;
+        }
+        FreeRollbackDebugStressCheckpoints();
+        this->updateActions(true, true);
+        this->showErrorMessage("Rollback Stress Replay Failed", QString::fromStdString(CoreGetError()));
+    }
+}
+
+void MainWindow::continueStressDebugReplay(void)
+{
+    auto failStressReplay = [this](const std::string& error)
+    {
+        CoreRollbackSetInputCallback(nullptr);
+        WriteRollbackDebugReplayEventLog("stress_failed", error);
+        {
+            std::lock_guard<std::mutex> lock(g_RollbackDebugReplay.mutex);
+            g_RollbackDebugReplay.mode = RollbackDebugReplayMode::Idle;
+            g_RollbackDebugReplay.countReplayInputHash = true;
+            g_RollbackDebugReplay.stressResimulating = false;
+        }
+        FreeRollbackDebugStressCheckpoints();
+        this->updateActions(true, true);
+        this->showErrorMessage("Rollback Stress Replay Failed", QString::fromStdString(error));
+    };
+
+    bool wasResimulating;
+    int frame;
+    int resumeFrame;
+    {
+        std::lock_guard<std::mutex> lock(g_RollbackDebugReplay.mutex);
+        wasResimulating = g_RollbackDebugReplay.stressResimulating;
+        frame = static_cast<int>(g_RollbackDebugReplay.verifyFrameIndex);
+        resumeFrame = g_RollbackDebugReplay.stressResumeFrame;
+        if (wasResimulating)
+        {
+            frame = resumeFrame;
+            g_RollbackDebugReplay.verifyFrameIndex = static_cast<size_t>(frame);
+            g_RollbackDebugReplay.verifyInputIndex = static_cast<size_t>(frame);
+            g_RollbackDebugReplay.countReplayInputHash = true;
+            g_RollbackDebugReplay.stressResimulating = false;
+        }
+    }
+
+    if (!wasResimulating)
+    {
+        frame++;
+        if (!SaveRollbackDebugStressCheckpoint(frame))
+        {
+            failStressReplay(CoreGetError());
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(g_RollbackDebugReplay.mutex);
+            g_RollbackDebugReplay.verifyFrameIndex = static_cast<size_t>(frame);
+        }
+    }
+
+    if (frame >= kRollbackDebugReplayFrames)
+    {
+        CoreRollbackState finalState = {};
+        CoreRollbackSetInputCallback(nullptr);
+        if (!CoreRollbackSaveGameState(finalState, CoreGetCurrentFrameCount()))
+        {
+            failStressReplay(CoreGetError());
+            return;
+        }
+
+        const uint64_t finalHash = HashRollbackState(finalState);
+        uint64_t expectedHash;
+        CoreRollbackState expectedFinalState;
+        size_t replayedInputFrames;
+        size_t recordedInputFrames;
+        size_t stressRollbackCount;
+        bool inputsMatched;
+        {
+            std::lock_guard<std::mutex> lock(g_RollbackDebugReplay.mutex);
+            expectedFinalState = g_RollbackDebugReplay.finalState;
+            expectedHash = g_RollbackDebugReplay.finalHash;
+            replayedInputFrames = g_RollbackDebugReplay.verifyFrameIndex;
+            recordedInputFrames = g_RollbackDebugReplay.inputs.size();
+            stressRollbackCount = g_RollbackDebugReplay.stressRollbackCount;
+            inputsMatched = g_RollbackDebugReplay.replayedInputHash == g_RollbackDebugReplay.recordedInputHash &&
+                g_RollbackDebugReplay.firstInputMismatchFrame < 0;
+            g_RollbackDebugReplay.mode = RollbackDebugReplayMode::Idle;
+            g_RollbackDebugReplay.countReplayInputHash = true;
+        }
+
+        const bool matched = inputsMatched && finalHash == expectedHash;
+        WriteRollbackDebugReplayLog("stress_verify", matched, expectedHash, finalHash, recordedInputFrames,
+            replayedInputFrames, expectedFinalState, finalState);
+        FreeRollbackDebugStressCheckpoints();
+        this->updateActions(true, true);
+        OnScreenDisplayResume();
+        if (matched)
+        {
+            this->setDebugReplayStatusMessage("Rollback stress matched: " + std::to_string(replayedInputFrames) +
+                " frames, " + std::to_string(stressRollbackCount) + " rollbacks, payload hash " +
+                std::to_string(finalHash) + ", wrote " + kRollbackDebugReplayLogPath);
+        }
+        else
+        {
+            int expectedPayloadLen = 0;
+            int actualPayloadLen = 0;
+            const int firstDiff = FirstRollbackStatePayloadDifference(expectedFinalState, finalState, expectedPayloadLen, actualPayloadLen);
+            this->setDebugReplayStatusMessage("Rollback stress mismatch: expected " + std::to_string(expectedHash) +
+                ", got " + std::to_string(finalHash) + ", first payload diff " + std::to_string(firstDiff) +
+                ", wrote " + kRollbackDebugReplayLogPath);
+        }
+        CoreRollbackFreeGameState(finalState);
+        return;
+    }
+
+    if (!wasResimulating && frame > 0 && (frame % kRollbackDebugStressInterval) == 0)
+    {
+        const int rollbackFrame = frame - kRollbackDebugStressRollbackFrames;
+        CoreRollbackState& checkpoint = g_RollbackDebugReplay.stressCheckpoints[RollbackDebugStressCheckpointIndex(rollbackFrame)];
+        if (checkpoint.buffer == nullptr)
+        {
+            failStressReplay("rollback checkpoint was missing");
+            return;
+        }
+        if (!CoreRollbackLoadGameState(checkpoint))
+        {
+            failStressReplay(CoreGetError());
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(g_RollbackDebugReplay.mutex);
+            g_RollbackDebugReplay.verifyInputIndex = static_cast<size_t>(rollbackFrame);
+            g_RollbackDebugReplay.countReplayInputHash = false;
+            g_RollbackDebugReplay.stressRollbackCount++;
+            g_RollbackDebugReplay.stressRollbackFrames += kRollbackDebugStressRollbackFrames;
+            g_RollbackDebugReplay.stressResimulatedFrames += kRollbackDebugStressRollbackFrames;
+            g_RollbackDebugReplay.stressResimulating = true;
+            g_RollbackDebugReplay.stressResumeFrame = frame;
+        }
+        if (!CoreRunFrames(kRollbackDebugStressRollbackFrames, CoreFrameOutput_None))
+        {
+            failStressReplay(CoreGetError());
+        }
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_RollbackDebugReplay.mutex);
+        g_RollbackDebugReplay.verifyInputIndex = static_cast<size_t>(frame);
+        g_RollbackDebugReplay.countReplayInputHash = true;
+    }
+    if ((frame % 30) == 0)
+    {
+        OnScreenDisplayResume();
+        this->setDebugReplayStatusMessage("Rollback stress with graphics: " + std::to_string(frame) +
+            "/" + std::to_string(kRollbackDebugReplayFrames) + " frames");
+    }
+    if (!CoreRunFrames(1, CoreFrameOutput_All))
+    {
+        failStressReplay(CoreGetError());
     }
 }
 

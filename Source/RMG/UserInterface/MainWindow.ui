@@ -165,6 +165,7 @@
     <addaction name="action_Rollback_StartDebugReplay"/>
     <addaction name="action_Rollback_VerifyDebugReplay"/>
     <addaction name="action_Rollback_VerifyDebugReplayWithGraphics"/>
+    <addaction name="action_Rollback_StressDebugReplay"/>
    </widget>
    <addaction name="menuSystem"/>
    <addaction name="menuSettings"/>
@@ -699,6 +700,14 @@
    </property>
    <property name="text">
     <string>Verify Debug Replay (with Graphics)</string>
+   </property>
+  </action>
+  <action name="action_Rollback_StressDebugReplay">
+   <property name="icon">
+    <iconset theme="speed-up-line"/>
+   </property>
+   <property name="text">
+    <string>Stress Debug Replay (Rollback 5 Every 10)</string>
    </property>
   </action>
  </widget>
