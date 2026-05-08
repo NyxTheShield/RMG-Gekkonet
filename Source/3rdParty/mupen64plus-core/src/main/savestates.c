@@ -237,6 +237,9 @@ static void savestates_clear_job(void)
 #define PUTDATA(buff, type, value) \
     do { type x = value; PUTARRAY(&x, buff, type, 1); } while(0)
 
+#define ZERODATA(buff, count) \
+    do { memset(buff, 0, count); buff += count; } while(0)
+
 static int savestates_load_m64p(struct device* dev, char *filepath)
 {
     unsigned char header[44];
@@ -1810,6 +1813,17 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
     int i;
     int memory_save;
     int rollback_buffer_save;
+    uint64_t rollback_save_start = 0;
+    uint64_t rollback_save_fixed_end = 0;
+    uint64_t rollback_save_rdram_start = 0;
+    uint64_t rollback_save_rdram_end = 0;
+    uint64_t rollback_save_sp_pif_end = 0;
+    uint64_t rollback_save_tlb_start = 0;
+    uint64_t rollback_save_tlb_end = 0;
+    uint64_t rollback_save_cpu_end = 0;
+    uint64_t rollback_save_extra_end = 0;
+    uint64_t rollback_save_finalize_end = 0;
+    uint64_t rollback_save_end = 0;
 
     char queue[1024];
 
@@ -1830,6 +1844,8 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
     save->filepath = strdup(filepath);
     memory_save = strcmp(filepath, "MEMORY") == 0;
     rollback_buffer_save = strcmp(filepath, "ROLLBACK") == 0;
+    if (rollback_buffer_save)
+        rollback_save_start = SDL_GetPerformanceCounter();
 
     if(autoinc_save_slot)
         savestates_inc_slot();
@@ -1882,7 +1898,8 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
         return 0;
     }
 
-    memset(save->data, 0, allocation_size);
+    if (!rollback_buffer_save)
+        memset(save->data, 0, allocation_size);
 
     // Write the save state data to memory
     PUTARRAY(savestate_magic, curr, unsigned char, 8);
@@ -2035,15 +2052,28 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
     PUTDATA(curr, uint32_t, dev->dp.dps_regs[DPS_BUFTEST_ADDR_REG]);
     PUTDATA(curr, uint32_t, dev->dp.dps_regs[DPS_BUFTEST_DATA_REG]);
 
+    if (rollback_buffer_save)
+    {
+        rollback_save_fixed_end = SDL_GetPerformanceCounter();
+        rollback_save_rdram_start = rollback_save_fixed_end;
+    }
     PUTARRAY(dev->rdram.dram, curr, uint32_t, RDRAM_MAX_SIZE/4);
+    if (rollback_buffer_save)
+        rollback_save_rdram_end = SDL_GetPerformanceCounter();
     PUTARRAY(dev->sp.mem, curr, uint32_t, SP_MEM_SIZE/4);
     PUTARRAY(dev->pif.ram, curr, uint8_t, PIF_RAM_SIZE);
+    if (rollback_buffer_save)
+        rollback_save_sp_pif_end = SDL_GetPerformanceCounter();
 
     PUTDATA(curr, int32_t, dev->cart.use_flashram);
-    curr += 4+8+4+4; // Here used to be flashram state
+    ZERODATA(curr, 4+8+4+4); // Here used to be flashram state
 
+    if (rollback_buffer_save)
+        rollback_save_tlb_start = SDL_GetPerformanceCounter();
     PUTARRAY(dev->r4300.cp0.tlb.LUT_r, curr, uint32_t, 0x100000);
     PUTARRAY(dev->r4300.cp0.tlb.LUT_w, curr, uint32_t, 0x100000);
+    if (rollback_buffer_save)
+        rollback_save_tlb_end = SDL_GetPerformanceCounter();
 
     /* OK to cast away const qualifier */
     PUTDATA(curr, uint32_t, *r4300_llbit((struct r4300_core*)&dev->r4300));
@@ -2088,6 +2118,8 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
     PUTDATA(curr, uint32_t, *r4300_cp0_next_interrupt((struct cp0*)&dev->r4300.cp0));
     PUTDATA(curr, uint32_t, 0); /* here there used to be next_vi */
     PUTDATA(curr, uint32_t, dev->vi.field);
+    if (rollback_buffer_save)
+        rollback_save_cpu_end = SDL_GetPerformanceCounter();
 
     to_little_endian_buffer(queue, 4, sizeof(queue)/4);
     PUTARRAY(queue, curr, char, sizeof(queue));
@@ -2179,7 +2211,7 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
 
     if (disk_id == NULL) {
         PUTDATA(curr, uint32_t, 0);
-        curr += (3+DD_ASIC_REGS_COUNT)*sizeof(uint32_t) + 0x100 + 0x40 + 2*sizeof(int64_t) + 2*sizeof(uint32_t);
+        ZERODATA(curr, (3+DD_ASIC_REGS_COUNT)*sizeof(uint32_t) + 0x100 + 0x40 + 2*sizeof(int64_t) + 2*sizeof(uint32_t));
     }
     else {
         PUTDATA(curr, uint32_t, *disk_id);
@@ -2245,6 +2277,8 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
     PUTDATA(curr, uint32_t, dev->sp.rsp_status);
     PUTDATA(curr, uint32_t, dev->sp.first_run);
     PUTDATA(curr, uint32_t, dev->sp.rsp_wait);
+    if (rollback_buffer_save)
+        rollback_save_extra_end = SDL_GetPerformanceCounter();
 
     if (rollback_buffer_save)
     {
@@ -2263,9 +2297,22 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
             *rollback_save_buffer_len = (int)(save->size + rollback_state_header_size);
         if (rollback_save_buffer != NULL)
             *rollback_save_buffer = (unsigned char *)save->data;
+        rollback_save_finalize_end = SDL_GetPerformanceCounter();
 
         free(save->filepath);
         free(save);
+        rollback_save_end = SDL_GetPerformanceCounter();
+        DebugMessage(M64MSG_INFO,
+            "Rollback save timing: total=%" PRIu64 "us fixed=%" PRIu64 "us rdram=%" PRIu64 "us sp_pif=%" PRIu64 "us tlb=%" PRIu64 "us cpu=%" PRIu64 "us extra=%" PRIu64 "us finalize=%" PRIu64 "us free=%" PRIu64 "us",
+            rollback_perf_us(rollback_save_start, rollback_save_end),
+            rollback_perf_us(rollback_save_start, rollback_save_fixed_end),
+            rollback_perf_us(rollback_save_rdram_start, rollback_save_rdram_end),
+            rollback_perf_us(rollback_save_rdram_end, rollback_save_sp_pif_end),
+            rollback_perf_us(rollback_save_tlb_start, rollback_save_tlb_end),
+            rollback_perf_us(rollback_save_tlb_end, rollback_save_cpu_end),
+            rollback_perf_us(rollback_save_cpu_end, rollback_save_extra_end),
+            rollback_perf_us(rollback_save_extra_end, rollback_save_finalize_end),
+            rollback_perf_us(rollback_save_finalize_end, rollback_save_end));
         return 1;
     }
 
