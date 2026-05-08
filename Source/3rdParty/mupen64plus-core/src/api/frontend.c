@@ -430,6 +430,9 @@ EXPORT m64p_error CALL CoreDoCommand(m64p_command Command, int ParamInt, void *P
         case M64CMD_ROLLBACK_SET_DETERMINISTIC:
             g_dev.r4300.randomize_interrupt = ParamInt ? 0 : ConfigGetParamBool(g_CoreConfig, "RandomizeInterrupt");
             return M64ERR_SUCCESS;
+        case M64CMD_ROLLBACK_SET_VERBOSE_STATS:
+            savestates_set_rollback_verbose_stats(ParamInt != 0);
+            return M64ERR_SUCCESS;
         case M64CMD_ROLLBACK_SAMPLE_INPUT:
             return rollback_sample_input((m64p_rollback_input_sample*)ParamPtr);
         case M64CMD_FRAME_OUTPUT_SET:

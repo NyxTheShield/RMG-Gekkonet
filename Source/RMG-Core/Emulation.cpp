@@ -610,6 +610,7 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
 #ifdef NETPLAY
         rollbackExecute = address.rfind("GEKKO|", 0) == 0;
 #endif
+        CoreRollbackSetVerboseStats(CoreSettingsGetBoolValue(SettingsID::Rollback_VerboseStats));
 
         if (rollbackExecute)
         {

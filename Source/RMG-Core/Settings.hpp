@@ -96,6 +96,10 @@ enum class SettingsID
     Kaillera_PlayerColumnWidths,
     Kaillera_P2PLastGame,
 
+    // Rollback Settings
+    Rollback_VerboseStats,
+    Rollback_HideMenu,
+
     // Core Plugin Settings
     Core_GFX_Plugin,
     Core_AUDIO_Plugin,

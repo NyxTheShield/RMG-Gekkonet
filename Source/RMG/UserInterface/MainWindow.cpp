@@ -156,6 +156,7 @@ public:
 #include <RMG-Core/SpeedFactor.hpp>
 #include <RMG-Core/Screenshot.hpp>
 #include <RMG-Core/Emulation.hpp>
+#include <RMG-Core/RollbackNetcode.hpp>
 #include <RMG-Core/SaveState.hpp>
 #include <RMG-Core/Settings.hpp>
 #include <RMG-Core/Plugins.hpp>
@@ -1302,6 +1303,7 @@ void MainWindow::configureUI(QApplication* app, bool showUI)
     }
 
     this->menuBar()->setVisible(this->ui_ShowMenubar);
+    this->menuRollback->menuAction()->setVisible(!CoreSettingsGetBoolValue(SettingsID::Rollback_HideMenu));
     this->toolBar->setVisible(this->ui_ShowToolbar);
     this->statusBar()->setVisible(this->ui_ShowStatusbar);
     this->statusBar()->addPermanentWidget(this->ui_StatusBar_Label, 99);
@@ -1696,6 +1698,7 @@ void MainWindow::updateUI(bool inEmulation, bool isPaused)
 
     // update timer timeout
     this->ui_StatusBarTimerTimeout = CoreSettingsGetIntValue(SettingsID::GUI_StatusbarMessageDuration);
+    this->menuRollback->menuAction()->setVisible(!CoreSettingsGetBoolValue(SettingsID::Rollback_HideMenu));
 }
 
 void MainWindow::setDebugReplayStatusMessage(const std::string& message)
@@ -1925,6 +1928,8 @@ void MainWindow::updateActions(bool inEmulation, bool isPaused)
         rollbackDebugReplayIdle = g_RollbackDebugReplay.mode == RollbackDebugReplayMode::Idle;
         rollbackDebugReplayReady = g_RollbackDebugReplay.ready || rollbackDebugReplayFileExists;
     }
+
+    this->menuRollback->menuAction()->setVisible(!CoreSettingsGetBoolValue(SettingsID::Rollback_HideMenu));
 
     keyBinding = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::KeyBinding_StartROM));
     this->action_System_StartRom->setShortcut(QKeySequence(keyBinding));
@@ -3306,6 +3311,7 @@ void MainWindow::on_Action_Settings_Settings(void)
 
     if (result == QDialog::Accepted)
     {
+        CoreRollbackSetVerboseStats(CoreSettingsGetBoolValue(SettingsID::Rollback_VerboseStats));
         const QString currentTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
         const QString currentIconTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_IconTheme));
         if (currentTheme != previousTheme || currentIconTheme != previousIconTheme)
@@ -3346,6 +3352,7 @@ void MainWindow::on_Action_Settings_Plugins(void)
 
     if (result == QDialog::Accepted)
     {
+        CoreRollbackSetVerboseStats(CoreSettingsGetBoolValue(SettingsID::Rollback_VerboseStats));
         const QString currentTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
         const QString currentIconTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_IconTheme));
         if (currentTheme != previousTheme || currentIconTheme != previousIconTheme)
@@ -4243,6 +4250,7 @@ void MainWindow::on_RomBrowser_EditGameSettings(QString file)
 
     if (result == QDialog::Accepted)
     {
+        CoreRollbackSetVerboseStats(CoreSettingsGetBoolValue(SettingsID::Rollback_VerboseStats));
         const QString currentTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
         const QString currentIconTheme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_IconTheme));
         if (currentTheme != previousTheme || currentIconTheme != previousIconTheme)

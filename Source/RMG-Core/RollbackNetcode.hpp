@@ -30,6 +30,7 @@ bool CoreRollbackAdvanceFrame(void);
 bool CoreRollbackSampleInput(void* values, int size, int players);
 bool CoreRollbackSetInputCallback(CoreRollbackInputCallback callback);
 bool CoreRollbackSetDeterministic(bool enabled);
+bool CoreRollbackSetVerboseStats(bool enabled);
 bool CoreRollbackExecute(m64p_rollback_execute_callbacks& callbacks);
 bool CoreRollbackRunFrame(int flags);
 

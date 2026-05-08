@@ -15,6 +15,7 @@
 
 #include <QStandardItemModel>
 #include <QHBoxLayout>
+#include <QCheckBox>
 #include <QStringList>
 #include <QTreeWidget>
 #include <QDialog>
@@ -67,6 +68,8 @@ class SettingsDialog : public QDialog, private Ui::SettingsDialog
 
     QColor currentBackgroundColor;
     QColor currentTextColor;
+    QCheckBox* rollbackVerboseStatsCheckBox = nullptr;
+    QCheckBox* rollbackHideMenuCheckBox = nullptr;
 
     std::vector<CorePlugin> pluginList;
 
@@ -90,6 +93,7 @@ class SettingsDialog : public QDialog, private Ui::SettingsDialog
     void loadInterfaceLogSettings(void);
     void loadInterfaceOSDSettings(void);
     void loadInterfaceNetplaySettings(void);
+    void loadRollbackSettings(void);
 
     void loadDefaultCoreSettings(void);
     void loadDefaultGameSettings(void);
@@ -105,6 +109,7 @@ class SettingsDialog : public QDialog, private Ui::SettingsDialog
     void loadDefaultInterfaceLogSettings(void);
     void loadDefaultInterfaceOSDSettings(void);
     void loadDefaultInterfaceNetplaySettings(void);
+    void loadDefaultRollbackSettings(void);
 
     void saveSettings(void);
     void saveCoreSettings(void);
@@ -121,6 +126,7 @@ class SettingsDialog : public QDialog, private Ui::SettingsDialog
     void saveInterfaceLogSettings(void);
     void saveInterfaceOSDSettings(void);
     void saveInterfaceNetplaySettings(void);
+    void saveRollbackSettings(void);
 
     void commonHotkeySettings(SettingsDialogAction);
     void commonPluginSettings(SettingsDialogAction);

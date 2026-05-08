@@ -12,6 +12,7 @@
 
 #include "Error.hpp"
 #include "Library.hpp"
+#include "Settings.hpp"
 
 #ifdef RMGK_HAVE_GEKKONET
 #include <gekkonet.h>
@@ -85,7 +86,8 @@ std::string hex_input(uint32_t value)
 void reset_gekko_log()
 {
     const char* logEnv = std::getenv("RMGK_GEKKO_LOG");
-    g_GekkoLogEnabled = logEnv != nullptr && std::strcmp(logEnv, "0") != 0;
+    g_GekkoLogEnabled = CoreSettingsGetBoolValue(SettingsID::Rollback_VerboseStats) ||
+        (logEnv != nullptr && std::strcmp(logEnv, "0") != 0);
     if (!g_GekkoLogEnabled)
     {
         g_GekkoLogFrames = 0;

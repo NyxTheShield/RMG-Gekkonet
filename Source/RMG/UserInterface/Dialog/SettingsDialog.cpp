@@ -16,6 +16,7 @@
 #include <QRegularExpressionValidator>
 #include <QCryptographicHash>
 #include <QRegularExpression>
+#include <QVBoxLayout>
 #include <QFileDialog>
 #include <QColorDialog>
 #include <QDirIterator>
@@ -222,6 +223,15 @@ SettingsDialog::SettingsDialog(QWidget *parent, QString file) : QDialog(parent)
     setupDirectoryChangeButtonIcon(this->changeSaveSramDirButton);
     setupDirectoryChangeButtonIcon(this->changeKailleraRecordsDirectoryButton);
 
+    QWidget* rollbackTab = new QWidget(this->tabWidget);
+    QVBoxLayout* rollbackLayout = new QVBoxLayout(rollbackTab);
+    this->rollbackVerboseStatsCheckBox = new QCheckBox("Enable verbose rollback stats messaging", rollbackTab);
+    this->rollbackHideMenuCheckBox = new QCheckBox("Hide rollback top menu", rollbackTab);
+    rollbackLayout->addWidget(this->rollbackVerboseStatsCheckBox);
+    rollbackLayout->addWidget(this->rollbackHideMenuCheckBox);
+    rollbackLayout->addStretch();
+    this->tabWidget->addTab(rollbackTab, "Rollback");
+
     this->setIconsForEmulationInfoText();
 
     // if ROM is open, we should retrieve the current settings,
@@ -272,6 +282,7 @@ SettingsDialog::SettingsDialog(QWidget *parent, QString file) : QDialog(parent)
     {
         this->loadSettings(i);
     }
+    this->loadRollbackSettings();
 
     // connect hotkey settings to slot
     this->commonHotkeySettings(SettingsDialogAction::ConnectSignals);
@@ -929,6 +940,12 @@ void SettingsDialog::loadInterfaceNetplaySettings(void)
     // this->netplayDispatcherUrlLineEdit->setText(QString::fromStdString(CoreSettingsGetStringValue(SettingsID::Netplay_DispatcherUrl)));
 }
 
+void SettingsDialog::loadRollbackSettings(void)
+{
+    this->rollbackVerboseStatsCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::Rollback_VerboseStats));
+    this->rollbackHideMenuCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::Rollback_HideMenu));
+}
+
 void SettingsDialog::loadDefaultCoreSettings(void)
 {
     bool disableExtraMem = CoreSettingsGetDefaultBoolValue(SettingsID::CoreOverlay_DisableExtraMem);
@@ -1131,6 +1148,12 @@ void SettingsDialog::loadDefaultInterfaceNetplaySettings(void)
     // this->netplayDispatcherUrlLineEdit->setText(QString::fromStdString(CoreSettingsGetDefaultStringValue(SettingsID::Netplay_DispatcherUrl)));
 }
 
+void SettingsDialog::loadDefaultRollbackSettings(void)
+{
+    this->rollbackVerboseStatsCheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::Rollback_VerboseStats));
+    this->rollbackHideMenuCheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::Rollback_HideMenu));
+}
+
 void SettingsDialog::saveSettings(void)
 {
     this->saveCoreSettings();
@@ -1152,6 +1175,7 @@ void SettingsDialog::saveSettings(void)
     this->saveInterfaceLogSettings();
     this->saveInterfaceOSDSettings();
     this->saveInterfaceNetplaySettings();
+    this->saveRollbackSettings();
     CoreSettingsSave();
 }
 
@@ -1388,6 +1412,12 @@ void SettingsDialog::saveInterfaceNetplaySettings(void)
     // Kaillera uses built-in server list, no need for custom URLs
     // CoreSettingsSetValue(SettingsID::Netplay_ServerJsonUrl, this->netplayServerUrlLineEdit->text().toStdString());
     // CoreSettingsSetValue(SettingsID::Netplay_DispatcherUrl, this->netplayDispatcherUrlLineEdit->text().toStdString());
+}
+
+void SettingsDialog::saveRollbackSettings(void)
+{
+    CoreSettingsSetValue(SettingsID::Rollback_VerboseStats, this->rollbackVerboseStatsCheckBox->isChecked());
+    CoreSettingsSetValue(SettingsID::Rollback_HideMenu, this->rollbackHideMenuCheckBox->isChecked());
 }
 
 void SettingsDialog::commonHotkeySettings(SettingsDialogAction action)
@@ -1856,7 +1886,14 @@ void SettingsDialog::on_buttonBox_clicked(QAbstractButton *button)
 
     if (pushButton == defaultButton)
     {
-        this->restoreDefaults(this->currentIndex());
+        if (this->tabWidget->tabText(this->tabWidget->currentIndex()) == "Rollback")
+        {
+            this->loadDefaultRollbackSettings();
+        }
+        else
+        {
+            this->restoreDefaults(this->currentIndex());
+        }
     }
     else if (pushButton == cancelButton)
     {

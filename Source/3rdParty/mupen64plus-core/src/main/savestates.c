@@ -119,6 +119,12 @@ static int *rollback_save_buffer_checksum = NULL;
 static int rollback_save_buffer_frame = 0;
 static unsigned char *rollback_save_prealloc_data = NULL;
 static int rollback_save_prealloc_capacity = 0;
+static int rollback_verbose_stats = 0;
+
+void savestates_set_rollback_verbose_stats(int enabled)
+{
+    rollback_verbose_stats = enabled != 0;
+}
 
 static uint64_t rollback_perf_us(uint64_t start, uint64_t end)
 {
@@ -1233,7 +1239,7 @@ static int savestates_load_m64p(struct device* dev, char *filepath)
 
     if (free_savestate_data)
         free(savestateData);
-    if (memory_data != NULL)
+    if (memory_data != NULL && rollback_verbose_stats)
     {
         uint64_t rollback_load_end = SDL_GetPerformanceCounter();
         uint64_t rollback_total_us = rollback_perf_us(rollback_load_start, rollback_load_end);
@@ -2327,17 +2333,20 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
         free(save->filepath);
         free(save);
         rollback_save_end = SDL_GetPerformanceCounter();
-        DebugMessage(M64MSG_INFO,
-            "Rollback save timing: total=%" PRIu64 "us fixed=%" PRIu64 "us rdram=%" PRIu64 "us sp_pif=%" PRIu64 "us tlb=%" PRIu64 "us cpu=%" PRIu64 "us extra=%" PRIu64 "us finalize=%" PRIu64 "us free=%" PRIu64 "us",
-            rollback_perf_us(rollback_save_start, rollback_save_end),
-            rollback_perf_us(rollback_save_start, rollback_save_fixed_end),
-            rollback_perf_us(rollback_save_rdram_start, rollback_save_rdram_end),
-            rollback_perf_us(rollback_save_rdram_end, rollback_save_sp_pif_end),
-            rollback_perf_us(rollback_save_tlb_start, rollback_save_tlb_end),
-            rollback_perf_us(rollback_save_tlb_end, rollback_save_cpu_end),
-            rollback_perf_us(rollback_save_cpu_end, rollback_save_extra_end),
-            rollback_perf_us(rollback_save_extra_end, rollback_save_finalize_end),
-            rollback_perf_us(rollback_save_finalize_end, rollback_save_end));
+        if (rollback_verbose_stats)
+        {
+            DebugMessage(M64MSG_INFO,
+                "Rollback save timing: total=%" PRIu64 "us fixed=%" PRIu64 "us rdram=%" PRIu64 "us sp_pif=%" PRIu64 "us tlb=%" PRIu64 "us cpu=%" PRIu64 "us extra=%" PRIu64 "us finalize=%" PRIu64 "us free=%" PRIu64 "us",
+                rollback_perf_us(rollback_save_start, rollback_save_end),
+                rollback_perf_us(rollback_save_start, rollback_save_fixed_end),
+                rollback_perf_us(rollback_save_rdram_start, rollback_save_rdram_end),
+                rollback_perf_us(rollback_save_rdram_end, rollback_save_sp_pif_end),
+                rollback_perf_us(rollback_save_tlb_start, rollback_save_tlb_end),
+                rollback_perf_us(rollback_save_tlb_end, rollback_save_cpu_end),
+                rollback_perf_us(rollback_save_cpu_end, rollback_save_extra_end),
+                rollback_perf_us(rollback_save_extra_end, rollback_save_finalize_end),
+                rollback_perf_us(rollback_save_finalize_end, rollback_save_end));
+        }
         return 1;
     }
 

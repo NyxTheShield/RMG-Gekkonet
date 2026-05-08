@@ -73,6 +73,7 @@ static bool l_InputPluginSwitchRequested = false;
 #define SETTING_SECTION_INPUT       SETTING_SECTION_GUI  " - Input Plugin"
 #define SETTING_SECTION_GCA         SETTING_SECTION_GUI  " - GameCube Adapter Input Plugin"
 #define SETTING_SECTION_KAILLERA    SETTING_SECTION_GUI  " Kaillera"
+#define SETTING_SECTION_ROLLBACK    SETTING_SECTION_GUI  " Rollback"
 #define SETTING_SECTION_RSP         "Rsp-HLE"
 
 // retrieves l_Setting from settingId
@@ -318,6 +319,13 @@ static l_Setting get_setting(SettingsID settingId)
         break;
     case SettingsID::Kaillera_P2PLastGame:
         setting = {SETTING_SECTION_KAILLERA, "P2PLastGame", std::string("")};
+        break;
+
+    case SettingsID::Rollback_VerboseStats:
+        setting = {SETTING_SECTION_ROLLBACK, "VerboseStats", false};
+        break;
+    case SettingsID::Rollback_HideMenu:
+        setting = {SETTING_SECTION_ROLLBACK, "HideMenu", false};
         break;
 
     case SettingsID::Core_GFX_Plugin:
