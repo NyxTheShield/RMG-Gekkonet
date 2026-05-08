@@ -54,6 +54,13 @@ void EmulationThread::SetNetplay(QString address, int port, int player)
     this->player  = player;
 }
 
+void EmulationThread::SetGgpoNetplay(QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay)
+{
+    this->address = "GGPO|" + remoteAddress + "|" + QString::number(remotePort) + "|" + QString::number(frameDelay);
+    this->port = localPort;
+    this->player = localPlayer;
+}
+
 void EmulationThread::run(void)
 {
     this->inhibitScreensaver();

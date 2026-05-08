@@ -2555,6 +2555,13 @@ void MainWindow::timerEvent(QTimerEvent *event)
     }
     else if (timerId == this->ui_CheckVideoSizeTimerId)
     {
+#ifdef NETPLAY
+        if (this->ui_RollbackLivePumpPending)
+        {
+            return;
+        }
+#endif // NETPLAY
+
         if (!CoreIsEmulationRunning())
         {
             return;
@@ -2609,6 +2616,52 @@ void MainWindow::timerEvent(QTimerEvent *event)
 
         this->killTimer(this->ui_LoadSaveStateSlotTimerId);
     }
+#ifdef NETPLAY
+    else if (timerId == this->ui_RollbackLivePumpTimerId)
+    {
+        if (!this->ui_RollbackLivePumpPending && !this->ui_RollbackLivePumpActive)
+        {
+            this->killTimer(timerId);
+            this->ui_RollbackLivePumpTimerId = 0;
+            return;
+        }
+
+        if (!rmgk_ggpo::is_real_session_running())
+        {
+            return;
+        }
+
+        if (CoreIsEmulationRunning())
+        {
+            CorePauseEmulation();
+            return;
+        }
+
+        if (!CoreIsEmulationPaused())
+        {
+            return;
+        }
+
+        if (this->ui_RollbackLivePumpPending)
+        {
+            this->ui_RollbackLivePumpPending = false;
+            this->ui_RollbackLivePumpActive = true;
+            OnScreenDisplaySetMessage("GGPO rollback frame pump active");
+        }
+
+        if (!rmgk_ggpo::advance_frame(CoreFrameOutput_All))
+        {
+            const std::string error = CoreGetError();
+            this->ui_RollbackLivePumpActive = false;
+            this->ui_RollbackLivePumpPending = false;
+            this->killTimer(timerId);
+            this->ui_RollbackLivePumpTimerId = 0;
+            rmgk_ggpo::close_session();
+            CoreStopEmulation();
+            this->showErrorMessage("GGPO Rollback Frame Pump Failed", QString::fromStdString(error));
+        }
+    }
+#endif // NETPLAY
 }
 
 void MainWindow::on_EventFilter_KeyPressed(QKeyEvent *event)
@@ -3470,6 +3523,8 @@ void MainWindow::on_Action_Netplay_BrowseSessions(void)
     // Connect signals
     connect(this->kailleraSessionManager, &KailleraSessionManager::gameStarted,
             this, &MainWindow::on_Kaillera_GameStarted);
+    connect(this->kailleraSessionManager, &KailleraSessionManager::rollbackSessionRequested,
+            this, &MainWindow::on_Rollback_SessionRequested);
     connect(this->kailleraSessionManager, &KailleraSessionManager::chatReceived,
             this, &MainWindow::on_Kaillera_ChatReceived);
 #ifdef _WIN32
@@ -3563,6 +3618,44 @@ void MainWindow::on_Kaillera_GameStarted(QString gameName, int playerNum, int to
     }
 
     this->emulationThread->SetNetplay("KAILLERA", 0, playerNum); // "KAILLERA" is the marker
+    this->launchEmulationThread(romFile, "", false, -1, true);
+}
+
+void MainWindow::on_Rollback_SessionRequested(QString gameName, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay)
+{
+    QString romFile = this->findRomByName(gameName);
+    if (romFile.isEmpty())
+    {
+        this->showErrorMessage("ROM Not Found",
+            "Could not find ROM: " + gameName + "\n\nPlease add it to your ROM directory and refresh the list.");
+        return;
+    }
+
+    if (this->emulationThread->isRunning())
+    {
+        CoreStopEmulation();
+        QTimer::singleShot(50, this,
+            [this, gameName, remoteAddress, localPort, remotePort, localPlayer, frameDelay]()
+            {
+                this->on_Rollback_SessionRequested(gameName, remoteAddress, localPort, remotePort, localPlayer, frameDelay);
+            });
+        return;
+    }
+
+    if (this->ui_CheckVideoSizeTimerId != 0)
+    {
+        this->killTimer(this->ui_CheckVideoSizeTimerId);
+        this->ui_CheckVideoSizeTimerId = 0;
+    }
+
+    this->ui_RollbackLivePumpPending = true;
+    this->ui_RollbackLivePumpActive = false;
+    if (this->ui_RollbackLivePumpTimerId == 0)
+    {
+        this->ui_RollbackLivePumpTimerId = this->startTimer(0);
+    }
+
+    this->emulationThread->SetGgpoNetplay(remoteAddress, localPort, remotePort, localPlayer, frameDelay);
     this->launchEmulationThread(romFile, "", false, -1, true);
 }
 
@@ -3949,6 +4042,16 @@ void MainWindow::on_Emulation_Finished(bool ret, QString error)
 #ifdef _WIN32
     this->restoreDisplayMode();
 #endif
+
+#ifdef NETPLAY
+    if (this->ui_RollbackLivePumpTimerId != 0)
+    {
+        this->killTimer(this->ui_RollbackLivePumpTimerId);
+        this->ui_RollbackLivePumpTimerId = 0;
+    }
+    this->ui_RollbackLivePumpPending = false;
+    this->ui_RollbackLivePumpActive = false;
+#endif // NETPLAY
 
     if (!ret)
     {

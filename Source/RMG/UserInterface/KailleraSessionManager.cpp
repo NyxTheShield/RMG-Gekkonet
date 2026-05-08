@@ -87,6 +87,8 @@ bool KailleraSessionManager::showServerDialog()
     // Use a QEventLoop to block this function until the dialog closes.
     KailleraNetplayDialog dialog(m_parentWidget);
     dialog.setWindowModality(Qt::NonModal);
+    QObject::connect(&dialog, &KailleraNetplayDialog::rollbackSessionRequested,
+                     this, &KailleraSessionManager::rollbackSessionRequested);
     dialog.show();
 
     QEventLoop loop;

@@ -31,11 +31,13 @@ public:
     explicit KailleraP2PDialog(bool isHost, const QString& gameName,
                                const QString& username,
                                const QString& joinCode = QString(),
-                               QWidget* parent = nullptr);
+                               QWidget* parent = nullptr,
+                               bool rollbackMode = false);
     ~KailleraP2PDialog() override;
 
 signals:
     void peerNicknameResolved(QString nickname);
+    void rollbackSessionReady(QString gameName, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay);
 
 protected:
     void reject() override;
@@ -86,6 +88,8 @@ private:
     QString buildEnlistAppName();
 
     bool m_isHost;
+    bool m_rollbackMode = false;
+    bool m_detachedForRollback = false;
     bool m_ready = false;
     QString m_gameName;
     QString m_username;

@@ -218,6 +218,20 @@ int p2p_core_get_port(){
 	return P2PCORE.PORT;
 }
 
+bool p2p_core_get_peer_endpoint(char *ip, int ip_len, int *port){
+	if (!p2p_core_initialized || P2PCORE.connection == 0 || ip == 0 || ip_len <= 0 || port == 0)
+		return false;
+
+	const char *addr = inet_ntoa(P2PCORE.connection->addr.sin_addr);
+	if (addr == 0 || addr[0] == 0)
+		return false;
+
+	strncpy(ip, addr, ip_len - 1);
+	ip[ip_len - 1] = 0;
+	*port = ntohs(P2PCORE.connection->addr.sin_port);
+	return *port > 0;
+}
+
 bool p2p_core_connect(char * ip, int port){
 	n02_TRACE();
 	if (ip == NULL)

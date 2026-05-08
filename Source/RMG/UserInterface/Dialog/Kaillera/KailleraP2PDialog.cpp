@@ -385,8 +385,9 @@ static bool tryExtractIPv4AndPort(const QByteArray& s, QString& outIp, int& outP
 
 KailleraP2PDialog::KailleraP2PDialog(bool isHost, const QString& gameName,
                                      const QString& username,
-                                     const QString& joinCode, QWidget* parent)
-    : QDialog(parent), m_isHost(isHost), m_gameName(gameName), m_username(username)
+                                     const QString& joinCode, QWidget* parent,
+                                     bool rollbackMode)
+    : QDialog(parent), m_isHost(isHost), m_rollbackMode(rollbackMode), m_gameName(gameName), m_username(username)
 {
     setWindowIcon(QIcon(":Resource/Kaillera.svg"));
     setupUI();
@@ -683,8 +684,11 @@ void KailleraP2PDialog::reject()
     if (m_isHost && m_travHostEnabled)
         travSendHostClose();
 
-    p2p_disconnect();
-    p2p_core_cleanup();
+    if (!m_detachedForRollback)
+    {
+        p2p_disconnect();
+        p2p_core_cleanup();
+    }
     travResetState();
     QDialog::reject();
 }
@@ -1209,6 +1213,30 @@ void KailleraP2PDialog::onChatReceived(QString nick, QString message)
 
 void KailleraP2PDialog::onGameStarted(QString game, int player, int maxPlayers)
 {
+    if (m_rollbackMode)
+    {
+        char peerIp[128] = {};
+        int peerPort = 0;
+        const int localPort = p2p_core_get_port();
+        const int frameDelay = (m_frameDelayCombo != nullptr) ? m_frameDelayCombo->currentIndex() : 0;
+        if (!p2p_core_get_peer_endpoint(peerIp, sizeof(peerIp), &peerPort))
+        {
+            m_chat->append("<span style='color:red;'>" + timestamp() + "Could not get GGPO peer endpoint.</span>");
+            return;
+        }
+
+        if (m_stepTimer) m_stepTimer->stop();
+        if (m_travTimer) m_travTimer->stop();
+        if (m_isHost && m_travHostEnabled)
+            travSendHostClose();
+        p2p_core_cleanup();
+        m_detachedForRollback = true;
+
+        emit rollbackSessionReady(game, QString::fromUtf8(peerIp), localPort, peerPort, player, frameDelay);
+        accept();
+        return;
+    }
+
     (void)player;
     (void)maxPlayers;
     m_chat->append("<span style='color:green;'>" + timestamp() + "Game started: " + game.toHtmlEscaped() + "</span>");

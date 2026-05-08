@@ -47,6 +47,9 @@ public:
     explicit KailleraNetplayDialog(QWidget* parent = nullptr);
     ~KailleraNetplayDialog() override;
 
+signals:
+    void rollbackSessionRequested(QString gameName, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay);
+
 private slots:
     void onStateMachineTimer();
 

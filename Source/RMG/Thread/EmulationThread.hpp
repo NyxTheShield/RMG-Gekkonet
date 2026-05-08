@@ -37,6 +37,7 @@ class EmulationThread : public QThread
     void SetRomFile(QString);
     void SetDiskFile(QString);
     void SetNetplay(QString address, int port, int player);
+    void SetGgpoNetplay(QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay);
 
     void run(void) override;
 

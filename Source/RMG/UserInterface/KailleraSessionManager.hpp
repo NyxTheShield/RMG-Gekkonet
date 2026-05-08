@@ -51,6 +51,9 @@ signals:
     // Emitted when the game ends
     void gameEnded();
 
+    // Emitted when the rollback tab requests a GGPO P2P game launch
+    void rollbackSessionRequested(QString gameName, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay);
+
 public slots:
     // Send a chat message to other players
     void sendChatMessage(QString message);

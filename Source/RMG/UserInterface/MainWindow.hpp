@@ -131,6 +131,7 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     int ui_GamesharkButtonTimerId = 0;
     int ui_UpdateSaveStateSlotTimerId = 0;
     int ui_CheckVideoSizeTimerId = 0;
+    int ui_RollbackLivePumpTimerId = 0;
 
     int ui_LoadSaveStateSlotCounter = 0;
     int ui_LoadSaveStateSlotTimerId = -1;
@@ -144,6 +145,8 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     bool ui_AutoStartNetplayOnStartupPending = false;
     bool ui_NetplayChatInputActive = false;
     QString ui_NetplayChatInput;
+    bool ui_RollbackLivePumpPending = false;
+    bool ui_RollbackLivePumpActive = false;
     struct PendingLocalChatEcho
     {
         QString message;
@@ -279,6 +282,7 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     void on_Kaillera_PlayerDropped(QString nickname, int playerNum);
     void on_Kaillera_GameEnded(void);
     void on_Kaillera_RecordingFileClosed(void);
+    void on_Rollback_SessionRequested(QString gameName, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay);
     void on_RomBrowser_RomListRefreshFinished(bool canceled);
 #endif
 

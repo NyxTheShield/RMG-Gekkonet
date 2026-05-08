@@ -22,6 +22,7 @@
 #include "Error.hpp"
 #include "File.hpp"
 #include "Rom.hpp"
+#include "rmgk_ggpo.hpp"
 
 #include "m64p/Api.hpp"
 
@@ -61,6 +62,40 @@ extern "C" {
     };
 
     typedef void (*pif_sync_callback_t)(struct pif*);
+}
+
+static bool parse_ggpo_address(const std::string& address, std::string& remoteAddress, int& remotePort, int& frameDelay)
+{
+    constexpr const char* prefix = "GGPO|";
+    if (address.rfind(prefix, 0) != 0)
+    {
+        return false;
+    }
+
+    const size_t remoteStart = std::char_traits<char>::length(prefix);
+    const size_t portSeparator = address.find('|', remoteStart);
+    if (portSeparator == std::string::npos)
+    {
+        return false;
+    }
+    const size_t delaySeparator = address.find('|', portSeparator + 1);
+    if (delaySeparator == std::string::npos)
+    {
+        return false;
+    }
+
+    remoteAddress = address.substr(remoteStart, portSeparator - remoteStart);
+    try
+    {
+        remotePort = std::stoi(address.substr(portSeparator + 1, delaySeparator - portSeparator - 1));
+        frameDelay = std::stoi(address.substr(delaySeparator + 1));
+    }
+    catch (...)
+    {
+        return false;
+    }
+
+    return !remoteAddress.empty() && remotePort > 0 && remotePort <= 65535 && frameDelay >= 0;
 }
 
 //
@@ -382,7 +417,7 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
 
 #ifdef NETPLAY
     // Apply RSP plugin override and reload plugins BEFORE ROM open
-    if (netplay && address == "KAILLERA")
+    if (netplay && (address == "KAILLERA" || address.rfind("GGPO|", 0) == 0))
     {
         apply_kaillera_rsp_override();
         CoreApplyPluginSettings();  // Force reload with HLE RSP
@@ -463,7 +498,7 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
 #ifdef NETPLAY
     // Apply deterministic settings AFTER all overlays for Kaillera netplay
     // This ensures user/game-specific settings don't override critical sync settings
-    if (netplay && address == "KAILLERA")
+    if (netplay && (address == "KAILLERA" || address.rfind("GGPO|", 0) == 0))
     {
         apply_kaillera_deterministic_settings();
     }
@@ -486,6 +521,38 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
                 // Store player number for input plugin to use
                 CoreSetKailleraPlayerNumber(player);
                 netplay_ret = true;
+            }
+        }
+        else if (address.rfind("GGPO|", 0) == 0)
+        {
+            std::string remoteAddress;
+            int remotePort = 0;
+            int frameDelay = 0;
+            if (!parse_ggpo_address(address, remoteAddress, remotePort, frameDelay))
+            {
+                CoreSetError("CoreStartEmulation: invalid GGPO session parameters");
+                m64p_ret = M64ERR_INPUT_INVALID;
+                netplay_ret = false;
+            }
+            else if (!rmgk_ggpo::set_deterministic(true))
+            {
+                m64p_ret = M64ERR_SYSTEM_FAIL;
+                netplay_ret = false;
+            }
+            else
+            {
+                rmgk_ggpo::SessionCallbacks callbacks = {};
+                netplay_ret = rmgk_ggpo::start_p2p_session(callbacks, nullptr, "rmgk-ggpo",
+                    2, static_cast<int>(sizeof(uint32_t)), player, static_cast<unsigned short>(port),
+                    remoteAddress.c_str(), static_cast<unsigned short>(remotePort), frameDelay);
+                if (!netplay_ret)
+                {
+                    if (CoreGetError().empty())
+                    {
+                        CoreSetError("CoreStartEmulation: GGPO session initialization failed");
+                    }
+                    m64p_ret = M64ERR_SYSTEM_FAIL;
+                }
             }
         }
         else
@@ -555,6 +622,10 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
         {
             // Don't shutdown Kaillera here - keep connection alive for restart
             // Kaillera will be shutdown when user leaves the server dialog
+        }
+        else if (address.rfind("GGPO|", 0) == 0)
+        {
+            rmgk_ggpo::close_session();
         }
         else
         {
