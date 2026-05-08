@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 3.2)
+cmake_minimum_required(VERSION 3.15)
+if(POLICY CMP0177)
+	cmake_policy(SET CMP0177 NEW)
+endif()
 
 # TODO: SDK Versioning.
 project(GGPO VERSION 1.0.0)

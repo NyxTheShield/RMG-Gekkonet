@@ -65,16 +65,12 @@ endif(PORTABLE_INSTALL)
 
 add_library(RMG-Core SHARED ${RMG_CORE_SOURCES})
 
-set(GGPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../ggpo-master")
-set(GGPO_STATIC_LIBRARY "${GGPO_ROOT}/build-rmgk-ucrt64-static/lib/x64/Release/libGGPO.a")
-if(WIN32 AND EXISTS "${GGPO_STATIC_LIBRARY}")
-    add_library(GGPO::GGPO STATIC IMPORTED)
-    set_target_properties(GGPO::GGPO PROPERTIES
-        IMPORTED_LOCATION "${GGPO_STATIC_LIBRARY}"
-        INTERFACE_INCLUDE_DIRECTORIES "${GGPO_ROOT}/src/include"
-    )
+if(TARGET GGPO)
     target_compile_definitions(RMG-Core PRIVATE RMGK_HAVE_GGPO)
-    target_link_libraries(RMG-Core PRIVATE GGPO::GGPO winmm ws2_32)
+    target_link_libraries(RMG-Core PRIVATE GGPO)
+    if(WIN32)
+        target_link_libraries(RMG-Core PRIVATE winmm ws2_32)
+    endif()
 endif()
 
 if(UNIX)

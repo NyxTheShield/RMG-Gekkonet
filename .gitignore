@@ -29,5 +29,5 @@ fightcade-fbneo-master
 ucrt64.exe - Shortcut.lnk
 
 # GGPO local build directories
-ggpo-master/build-rmgk-ucrt64/
-ggpo-master/build-rmgk-ucrt64-static/
+ggpo-master/
+Source/3rdParty/ggpo/build*/

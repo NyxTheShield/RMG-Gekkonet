@@ -71,6 +71,11 @@ if (WIN32)
     set(SDL3NET_LDLIBS "${SDL3NET_LDLIBS} -liphlpapi -lws2_32")
 endif (WIN32)
 
+set(GGPO_BUILD_SDK ON CACHE BOOL "Build the vendored GGPO SDK" FORCE)
+set(GGPO_BUILD_VECTORWAR OFF CACHE BOOL "Build the vendored GGPO Vector War sample" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build vendored GGPO as a static library" FORCE)
+add_subdirectory(ggpo)
+
 ExternalProject_Add(mupen64plus-core
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/mupen64plus-core/
 
