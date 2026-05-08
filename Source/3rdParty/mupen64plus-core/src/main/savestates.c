@@ -78,9 +78,11 @@ static const int savestate_latest_version = 0x00020000;  /* 2.0 */
 static const int rollback_state_header_magic = 'RLBK';
 static const int rollback_state_legacy_header_magic = ('G' << 24) | ('G' << 16) | ('P' << 8) | 'O';
 static const int rollback_state_header_base_size = 6 * sizeof(int);
-static const int rollback_state_header_size = 12 * sizeof(int);
+static const int rollback_state_header_hot_size = 12 * sizeof(int);
+static const int rollback_state_header_size = 12 * sizeof(int) + 32 * 2 * sizeof(uintptr_t);
 static const int rollback_state_flag_omit_tlb_lut = 1 << 0;
 static const int rollback_state_flag_dynarec_hot_state = 1 << 1;
+static const int rollback_state_flag_dynarec_mini_ht = 1 << 2;
 static const size_t rollback_tlb_lut_size = 0x100000 * sizeof(uint32_t) * 2;
 static const unsigned char pj64_magic[4] = { 0xC8, 0xA6, 0xD8, 0x23 };
 

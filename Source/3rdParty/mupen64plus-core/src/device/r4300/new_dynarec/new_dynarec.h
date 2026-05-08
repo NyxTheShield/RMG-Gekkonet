@@ -102,6 +102,8 @@ extern unsigned int using_tlb;
 void invalidate_cached_code_new_dynarec(struct r4300_core* r4300, uint32_t address, size_t size);
 void new_dynarec_rollback_stats_reset(void);
 void new_dynarec_rollback_stats_get(struct new_dynarec_rollback_stats* stats);
+void new_dynarec_rollback_save_mini_ht(uintptr_t mini_ht[32][2]);
+void new_dynarec_rollback_restore_mini_ht(const uintptr_t mini_ht[32][2]);
 void new_dynarec_init(void);
 void new_dyna_start(void);
 void new_dyna_resume(void);

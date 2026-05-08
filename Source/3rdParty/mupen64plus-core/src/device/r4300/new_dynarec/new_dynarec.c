@@ -325,6 +325,34 @@ void new_dynarec_rollback_stats_get(struct new_dynarec_rollback_stats* stats)
   *stats = rollback_stats;
 }
 
+void new_dynarec_rollback_save_mini_ht(uintptr_t mini_ht[32][2])
+{
+  memcpy(mini_ht, g_dev.r4300.new_dynarec_hot_state.mini_ht, sizeof(g_dev.r4300.new_dynarec_hot_state.mini_ht));
+}
+
+void new_dynarec_rollback_restore_mini_ht(const uintptr_t mini_ht[32][2])
+{
+  uintptr_t rx_start = (uintptr_t)base_addr_rx;
+  uintptr_t rx_end = rx_start + ((uintptr_t)1 << TARGET_SIZE_2);
+  unsigned int i;
+
+  for (i = 0; i < 32; i++)
+  {
+    uintptr_t guest_pc = mini_ht[i][0];
+    uintptr_t host_pc = mini_ht[i][1];
+    if (guest_pc != (uintptr_t)-1 && host_pc >= rx_start && host_pc < rx_end)
+    {
+      g_dev.r4300.new_dynarec_hot_state.mini_ht[i][0] = guest_pc;
+      g_dev.r4300.new_dynarec_hot_state.mini_ht[i][1] = host_pc;
+    }
+    else
+    {
+      g_dev.r4300.new_dynarec_hot_state.mini_ht[i][0] = (uintptr_t)-1;
+      g_dev.r4300.new_dynarec_hot_state.mini_ht[i][1] = (uintptr_t)-1;
+    }
+  }
+}
+
 #if COUNT_NOTCOMPILEDS
 static int notcompiledCount = 0;
 #endif
