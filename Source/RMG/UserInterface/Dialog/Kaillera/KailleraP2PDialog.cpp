@@ -29,6 +29,7 @@
 #include <QIcon>
 #include <QFrame>
 #include <QListView>
+#include <QSettings>
 
 #include <algorithm>
 #include <cstring>
@@ -538,10 +539,10 @@ void KailleraP2PDialog::setupUI()
     bottomLayout->addWidget(leftWidget, 0, Qt::AlignTop);
     bottomLayout->addStretch(1);
 
-    // Right side: Host group (host only)
-    if (m_isHost)
+    // Right side: host options for Kaillera, local rollback options for each GekkoNet peer.
+    if (m_isHost || m_rollbackMode)
     {
-        m_hostGroup = new QGroupBox("Host:", this);
+        m_hostGroup = new QGroupBox(m_rollbackMode ? "Rollback:" : "Host:", this);
         m_hostGroup->setObjectName("KailleraP2PGroup");
         auto* hostLayout = new QVBoxLayout(m_hostGroup);
         hostLayout->setContentsMargins(9, 7, 9, 9);
@@ -550,27 +551,45 @@ void KailleraP2PDialog::setupUI()
         auto* fdlyLayout = new QHBoxLayout();
         fdlyLayout->setContentsMargins(0, 0, 0, 0);
         fdlyLayout->setSpacing(6);
-        auto* frameDelayLabel = new QLabel("Frame Delay:", m_hostGroup);
+        auto* frameDelayLabel = new QLabel(m_rollbackMode ? "Local Input Delay:" : "Frame Delay:", m_hostGroup);
         fdlyLayout->addWidget(frameDelayLabel);
         m_frameDelayCombo = new QComboBox(m_hostGroup);
         m_frameDelayCombo->setObjectName("KailleraP2PCombo");
         m_frameDelayCombo->setMinimumWidth(140);
         m_frameDelayCombo->setSizeAdjustPolicy(QComboBox::AdjustToContentsOnFirstShow);
         configureP2PComboPopup(m_frameDelayCombo, theme);
-        m_frameDelayCombo->addItem("Auto");
-        m_frameDelayCombo->addItem("1 frame (0-33ms)");
-        m_frameDelayCombo->addItem("2 frames (34-67ms)");
-        m_frameDelayCombo->addItem("3 frames (68-99ms)");
-        m_frameDelayCombo->addItem("4 frames (100-133ms)");
-        m_frameDelayCombo->addItem("5 frames (134-167ms)");
-        m_frameDelayCombo->addItem("6 frames (168-199ms)");
-        m_frameDelayCombo->addItem("7 frames (200-233ms)");
-        m_frameDelayCombo->addItem("8 frames (234-267ms)");
-        m_frameDelayCombo->addItem("9 frames (268+ms)");
-        KailleraUIBridge::instance().setSelectedDelay(m_frameDelayCombo->currentIndex());
-        connect(m_frameDelayCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [](int index) {
-            KailleraUIBridge::instance().setSelectedDelay(index);
-        });
+        if (m_rollbackMode)
+        {
+            for (int delay = 0; delay <= 9; delay++)
+            {
+                m_frameDelayCombo->addItem(delay == 1 ? "1 frame" : QString("%1 frames").arg(delay));
+            }
+            QSettings settings("RMG-K", "n02");
+            int rollbackDelay = settings.value("Rollback_FrameDelay", 2).toInt();
+            if (rollbackDelay < 0 || rollbackDelay > 9) rollbackDelay = 2;
+            m_frameDelayCombo->setCurrentIndex(rollbackDelay);
+            connect(m_frameDelayCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [](int index) {
+                QSettings settings("RMG-K", "n02");
+                settings.setValue("Rollback_FrameDelay", index);
+            });
+        }
+        else
+        {
+            m_frameDelayCombo->addItem("Auto");
+            m_frameDelayCombo->addItem("1 frame (0-33ms)");
+            m_frameDelayCombo->addItem("2 frames (34-67ms)");
+            m_frameDelayCombo->addItem("3 frames (68-99ms)");
+            m_frameDelayCombo->addItem("4 frames (100-133ms)");
+            m_frameDelayCombo->addItem("5 frames (134-167ms)");
+            m_frameDelayCombo->addItem("6 frames (168-199ms)");
+            m_frameDelayCombo->addItem("7 frames (200-233ms)");
+            m_frameDelayCombo->addItem("8 frames (234-267ms)");
+            m_frameDelayCombo->addItem("9 frames (268+ms)");
+            KailleraUIBridge::instance().setSelectedDelay(m_frameDelayCombo->currentIndex());
+            connect(m_frameDelayCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [](int index) {
+                KailleraUIBridge::instance().setSelectedDelay(index);
+            });
+        }
         fdlyLayout->addWidget(m_frameDelayCombo);
         hostLayout->addLayout(fdlyLayout);
 
@@ -583,32 +602,38 @@ void KailleraP2PDialog::setupUI()
             hostMargins.right();
         m_hostGroup->setMinimumWidth(hostMinWidth);
 
-        hostLayout->addWidget(new QLabel("Connect code:", m_hostGroup));
+        if (m_isHost)
+        {
+            hostLayout->addWidget(new QLabel("Connect code:", m_hostGroup));
 
-        auto* codeRow = new QHBoxLayout();
-        codeRow->setContentsMargins(0, 0, 0, 0);
-        codeRow->setSpacing(0);
+            auto* codeRow = new QHBoxLayout();
+            codeRow->setContentsMargins(0, 0, 0, 0);
+            codeRow->setSpacing(0);
 
-        m_connectCodeEdit = new QLineEdit(m_hostGroup);
-        m_connectCodeEdit->setObjectName("KailleraP2PInput");
-        m_connectCodeEdit->setReadOnly(true);
-        m_connectCodeEdit->setText("{waiting}");
-        m_copyAction = m_connectCodeEdit->addAction(themedP2PIcon("copy-line"), QLineEdit::TrailingPosition);
-        m_copyAction->setToolTip("Copy to clipboard");
-        connect(m_copyAction, &QAction::triggered, this, &KailleraP2PDialog::onCopyConnectCode);
-        codeRow->addWidget(m_connectCodeEdit, 1);
-        hostLayout->addLayout(codeRow);
+            m_connectCodeEdit = new QLineEdit(m_hostGroup);
+            m_connectCodeEdit->setObjectName("KailleraP2PInput");
+            m_connectCodeEdit->setReadOnly(true);
+            m_connectCodeEdit->setText("{waiting}");
+            m_copyAction = m_connectCodeEdit->addAction(themedP2PIcon("copy-line"), QLineEdit::TrailingPosition);
+            m_copyAction->setToolTip("Copy to clipboard");
+            connect(m_copyAction, &QAction::triggered, this, &KailleraP2PDialog::onCopyConnectCode);
+            codeRow->addWidget(m_connectCodeEdit, 1);
+            hostLayout->addLayout(codeRow);
 
-        m_enlistCheck = new QCheckBox("Show on public list", m_hostGroup);
-        hostLayout->addWidget(m_enlistCheck);
+            m_enlistCheck = new QCheckBox("Show on public list", m_hostGroup);
+            hostLayout->addWidget(m_enlistCheck);
+        }
 
         bottomLayout->addWidget(m_hostGroup, 0, Qt::AlignTop);
-        connect(m_enlistCheck, &QCheckBox::toggled, this, [this](bool checked) {
-            if (checked)
-                enlistGame();
-            else
-                unenlistGame();
-        });
+        if (m_enlistCheck != nullptr)
+        {
+            connect(m_enlistCheck, &QCheckBox::toggled, this, [this](bool checked) {
+                if (checked)
+                    enlistGame();
+                else
+                    unenlistGame();
+            });
+        }
     }
 
     mainLayout->addLayout(bottomLayout);

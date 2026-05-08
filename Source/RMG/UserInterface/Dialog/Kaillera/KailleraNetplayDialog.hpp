@@ -162,8 +162,6 @@ private:
     // Rollback host/connect controls
     QComboBox* m_rollbackGameCombo = nullptr;
     QLineEdit* m_rollbackHostEdit = nullptr;
-    QLineEdit* m_rollbackPortEdit = nullptr;
-    QLineEdit* m_rollbackFrameDelayEdit = nullptr;
     QPushButton* m_btnRollbackHost = nullptr;
     QPushButton* m_btnRollbackJoin = nullptr;
 
