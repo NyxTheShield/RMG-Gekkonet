@@ -23,6 +23,7 @@ struct CoreRollbackState
 using CoreRollbackInputCallback = int (*)(void* values, int size, int players);
 
 bool CoreRollbackSaveGameState(CoreRollbackState& state, int frame);
+bool CoreRollbackSaveGameStateInto(CoreRollbackState& state, unsigned char* buffer, int capacity, int frame);
 bool CoreRollbackLoadGameState(const CoreRollbackState& state);
 void CoreRollbackFreeGameState(CoreRollbackState& state);
 bool CoreRollbackAdvanceFrame(void);

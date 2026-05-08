@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -35,6 +36,7 @@ constexpr unsigned int kGekkoStateCapacity = 24u * 1024u * 1024u;
 constexpr int kGekkoMaxLoggedFrames = 600;
 constexpr float kGekkoPacingFramesAheadThreshold = 0.5f;
 constexpr int kGekkoPacingExtraUs = 267;
+constexpr int kGekkoWaitSleepUs = 100;
 
 #ifdef RMGK_HAVE_GEKKONET
 struct PendingGekkoSave
@@ -61,6 +63,7 @@ std::vector<unsigned char> g_GekkoLastLatchedInput;
 int g_GekkoWaitingLoops = 0;
 int g_GekkoLocalInputLogRepeats = 0;
 int g_GekkoPacingLogFrames = 0;
+bool g_GekkoLogEnabled = false;
 #endif
 
 int rmgk_gekko_core_input_callback(void* values, int size, int players)
@@ -78,6 +81,19 @@ std::string hex_input(uint32_t value)
 
 void reset_gekko_log()
 {
+    const char* logEnv = std::getenv("RMGK_GEKKO_LOG");
+    g_GekkoLogEnabled = logEnv != nullptr && std::strcmp(logEnv, "0") != 0;
+    if (!g_GekkoLogEnabled)
+    {
+        g_GekkoLogFrames = 0;
+        g_GekkoLastSubmittedInput = 0xffffffffu;
+        g_GekkoLastLatchedInput.clear();
+        g_GekkoWaitingLoops = 0;
+        g_GekkoLocalInputLogRepeats = 0;
+        g_GekkoPacingLogFrames = 0;
+        return;
+    }
+
     std::lock_guard<std::mutex> lock(g_GekkoLogMutex);
     const char* path = g_GekkoLocalPlayer == 2 ? "rollback_gekko_client.log" : "rollback_gekko_host.log";
     std::ofstream file(path, std::ios::out | std::ios::trunc);
@@ -92,6 +108,11 @@ void reset_gekko_log()
 
 void write_gekko_log(const std::string& message)
 {
+    if (!g_GekkoLogEnabled)
+    {
+        return;
+    }
+
     std::lock_guard<std::mutex> lock(g_GekkoLogMutex);
     const char* path = g_GekkoLocalPlayer == 2 ? "rollback_gekko_client.log" : "rollback_gekko_host.log";
     std::ofstream file(path, std::ios::out | std::ios::app);
@@ -126,6 +147,11 @@ const char* gekko_game_event_name(GekkoGameEventType type)
 
 void log_session_events()
 {
+    if (!g_GekkoLogEnabled)
+    {
+        return;
+    }
+
     int count = 0;
     GekkoSessionEvent** events = gekko_session_events(g_GekkoSession, &count);
     for (int i = 0; i < count; i++)
@@ -168,6 +194,7 @@ bool save_gekko_state(const PendingGekkoSave& save)
 {
     CoreRollbackState state;
     const int coreFrame = std::max(0, save.frame);
+    if (g_GekkoLogEnabled)
     {
         std::ostringstream stream;
         stream << "save_state begin frame=" << save.frame
@@ -196,7 +223,7 @@ bool save_gekko_state(const PendingGekkoSave& save)
         return true;
     }
 
-    if (!CoreRollbackSaveGameState(state, coreFrame))
+    if (!CoreRollbackSaveGameStateInto(state, save.state, static_cast<int>(kGekkoStateCapacity), coreFrame))
     {
         write_gekko_log("save_state result=fail");
         return false;
@@ -208,12 +235,17 @@ bool save_gekko_state(const PendingGekkoSave& save)
         stream << "save_state result=fail reason=state_too_large len=" << state.len
                << " capacity=" << kGekkoStateCapacity;
         write_gekko_log(stream.str());
-        CoreRollbackFreeGameState(state);
         CoreSetError("GekkoNet rollback state exceeded configured state buffer");
         return false;
     }
 
-    std::memcpy(save.state, state.buffer, static_cast<size_t>(state.len));
+    if (state.buffer != save.state)
+    {
+        write_gekko_log("save_state result=fail reason=state_not_written_in_place");
+        CoreSetError("GekkoNet rollback state was not saved into the provided state buffer");
+        return false;
+    }
+
     if (save.stateLen != nullptr)
     {
         *save.stateLen = static_cast<unsigned int>(state.len);
@@ -223,7 +255,7 @@ bool save_gekko_state(const PendingGekkoSave& save)
         *save.checksum = static_cast<unsigned int>(state.checksum);
     }
 
-    if (g_GekkoLogFrames < kGekkoMaxLoggedFrames)
+    if (g_GekkoLogEnabled && g_GekkoLogFrames < kGekkoMaxLoggedFrames)
     {
         std::ostringstream stream;
         stream << "save_state result=ok frame=" << save.frame
@@ -232,7 +264,6 @@ bool save_gekko_state(const PendingGekkoSave& save)
         write_gekko_log(stream.str());
     }
 
-    CoreRollbackFreeGameState(state);
     return true;
 }
 
@@ -248,7 +279,7 @@ bool load_gekko_state(const GekkoGameEvent* event)
         return false;
     }
 
-    if (g_GekkoLogFrames < kGekkoMaxLoggedFrames)
+    if (g_GekkoLogEnabled && g_GekkoLogFrames < kGekkoMaxLoggedFrames)
     {
         std::ostringstream stream;
         stream << "load_state result=ok frame=" << event->data.load.frame
@@ -279,7 +310,8 @@ bool submit_local_input()
         g_GekkoLocalInputLogRepeats++;
     }
 
-    if (changed || g_GekkoLocalInputLogRepeats <= 20 || (g_GekkoLocalInputLogRepeats % 60) == 0)
+    if (g_GekkoLogEnabled &&
+        (changed || g_GekkoLocalInputLogRepeats <= 20 || (g_GekkoLocalInputLogRepeats % 60) == 0))
     {
         std::ostringstream stream;
         stream << "add_local_input local_player=" << g_GekkoLocalPlayer
@@ -287,8 +319,8 @@ bool submit_local_input()
                << " physical_p1=" << hex_input(input)
                << " repeat=" << g_GekkoLocalInputLogRepeats;
         write_gekko_log(stream.str());
-        g_GekkoLastSubmittedInput = input;
     }
+    g_GekkoLastSubmittedInput = input;
     return true;
 }
 
@@ -301,11 +333,15 @@ bool latch_gekko_input(const GekkoGameEvent* event)
         return false;
     }
 
-    g_GekkoLatchedInput.assign(static_cast<size_t>(expectedBytes), 0);
+    if (static_cast<int>(g_GekkoLatchedInput.size()) != expectedBytes)
+    {
+        g_GekkoLatchedInput.resize(static_cast<size_t>(expectedBytes));
+    }
     std::memcpy(g_GekkoLatchedInput.data(), event->data.adv.inputs, static_cast<size_t>(expectedBytes));
     g_GekkoHasLatchedInput = true;
 
-    if (g_GekkoLogFrames < kGekkoMaxLoggedFrames || g_GekkoLatchedInput != g_GekkoLastLatchedInput)
+    if (g_GekkoLogEnabled &&
+        (g_GekkoLogFrames < kGekkoMaxLoggedFrames || g_GekkoLatchedInput != g_GekkoLastLatchedInput))
     {
         std::ostringstream stream;
         stream << "sync_input result=ok frame=" << event->data.adv.frame
@@ -352,7 +388,8 @@ void apply_gekko_frame_pacing()
     }
 
     g_GekkoPacingLogFrames++;
-    if (sleepUs > 0 || g_GekkoPacingLogFrames <= 10 || (g_GekkoPacingLogFrames % 60) == 0)
+    if (g_GekkoLogEnabled &&
+        (sleepUs > 0 || g_GekkoPacingLogFrames <= 10 || (g_GekkoPacingLogFrames % 60) == 0))
     {
         std::ostringstream stream;
         stream << "pacing frames_ahead=" << std::fixed << std::setprecision(2) << framesAhead
@@ -399,7 +436,8 @@ int rollback_execute_begin_frame(void* userData)
         if (count == 0)
         {
             g_GekkoWaitingLoops++;
-            if (g_GekkoWaitingLoops <= 20 || (g_GekkoWaitingLoops % 60) == 0)
+            if (g_GekkoLogEnabled &&
+                (g_GekkoWaitingLoops <= 20 || (g_GekkoWaitingLoops % 60) == 0))
             {
                 std::ostringstream stream;
                 stream << "update_session result=waiting loop=" << g_GekkoWaitingLoops
@@ -407,7 +445,7 @@ int rollback_execute_begin_frame(void* userData)
                 write_gekko_log(stream.str());
             }
         }
-        else
+        else if (g_GekkoLogEnabled)
         {
             std::ostringstream stream;
             stream << "update_session result=events count=" << count;
@@ -435,6 +473,10 @@ int rollback_execute_begin_frame(void* userData)
                 }
             }
             write_gekko_log(stream.str());
+            g_GekkoWaitingLoops = 0;
+        }
+        else
+        {
             g_GekkoWaitingLoops = 0;
         }
 
@@ -510,7 +552,7 @@ int rollback_execute_begin_frame(void* userData)
             return 1;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        std::this_thread::sleep_for(std::chrono::microseconds(kGekkoWaitSleepUs));
     }
 }
 
@@ -584,6 +626,7 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
     g_GekkoHasLatchedInput = false;
     g_GekkoPendingSaves.clear();
 
+    if (g_GekkoLogEnabled)
     {
         std::ostringstream stream;
         stream << "start_p2p_session game=" << gameName
@@ -612,9 +655,12 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
             }
             g_GekkoLocalHandle = handle;
             gekko_set_local_delay(g_GekkoSession, handle, static_cast<unsigned char>(std::clamp(localDelay, 0, 10)));
-            std::ostringstream stream;
-            stream << "gekko_add_actor result=ok player=" << player << " type=local handle=" << handle;
-            write_gekko_log(stream.str());
+            if (g_GekkoLogEnabled)
+            {
+                std::ostringstream stream;
+                stream << "gekko_add_actor result=ok player=" << player << " type=local handle=" << handle;
+                write_gekko_log(stream.str());
+            }
         }
         else
         {
@@ -632,11 +678,14 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
             {
                 g_GekkoRemoteHandle = handle;
             }
-            std::ostringstream stream;
-            stream << "gekko_add_actor result=ok player=" << player
-                   << " type=remote handle=" << handle
-                   << " remote=" << remoteAddress;
-            write_gekko_log(stream.str());
+            if (g_GekkoLogEnabled)
+            {
+                std::ostringstream stream;
+                stream << "gekko_add_actor result=ok player=" << player
+                       << " type=remote handle=" << handle
+                       << " remote=" << remoteAddress;
+                write_gekko_log(stream.str());
+            }
         }
     }
 

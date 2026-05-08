@@ -115,6 +115,8 @@ static unsigned char **rollback_save_buffer = NULL;
 static int *rollback_save_buffer_len = NULL;
 static int *rollback_save_buffer_checksum = NULL;
 static int rollback_save_buffer_frame = 0;
+static unsigned char *rollback_save_prealloc_data = NULL;
+static int rollback_save_prealloc_capacity = 0;
 
 /* Returns the malloc'd full path of the currently selected savestate. */
 static char *savestates_generate_path(savestates_type type)
@@ -1754,7 +1756,22 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
     if (rollback_buffer_save)
     {
         allocation_size += rollback_state_header_size;
-        save->data = malloc(allocation_size);
+        if (rollback_save_prealloc_data != NULL)
+        {
+            if (rollback_save_prealloc_capacity < (int)allocation_size)
+            {
+                free(save->filepath);
+                free(save);
+                main_message(M64MSG_STATUS, OSD_BOTTOM_LEFT, "Insufficient rollback state buffer.");
+                StateChanged(M64CORE_STATE_SAVECOMPLETE, 0);
+                return 0;
+            }
+            save->data = (char *)rollback_save_prealloc_data;
+        }
+        else
+        {
+            save->data = malloc(allocation_size);
+        }
         curr = save->data + rollback_state_header_size;
     }
     else if (memory_save)
@@ -2478,12 +2495,21 @@ int savestates_save_rollback_buffer(unsigned char **buffer, int *len, int *check
 {
     const struct device* dev = &g_dev;
     int result;
+    unsigned char *prealloc_data;
+    int prealloc_capacity;
 
     if (buffer == NULL || len == NULL)
         return 0;
 
-    *buffer = NULL;
-    *len = 0;
+    prealloc_data = *buffer;
+    prealloc_capacity = *len;
+    if (prealloc_data == NULL || prealloc_capacity <= 0)
+    {
+        *buffer = NULL;
+        *len = 0;
+        prealloc_data = NULL;
+        prealloc_capacity = 0;
+    }
     if (checksum != NULL)
         *checksum = 0;
 
@@ -2491,6 +2517,8 @@ int savestates_save_rollback_buffer(unsigned char **buffer, int *len, int *check
     rollback_save_buffer_len = len;
     rollback_save_buffer_checksum = checksum;
     rollback_save_buffer_frame = frame;
+    rollback_save_prealloc_data = prealloc_data;
+    rollback_save_prealloc_capacity = prealloc_capacity;
 
     result = savestates_save_m64p(dev, "ROLLBACK");
 
@@ -2498,6 +2526,8 @@ int savestates_save_rollback_buffer(unsigned char **buffer, int *len, int *check
     rollback_save_buffer_len = NULL;
     rollback_save_buffer_checksum = NULL;
     rollback_save_buffer_frame = 0;
+    rollback_save_prealloc_data = NULL;
+    rollback_save_prealloc_capacity = 0;
 
     return result;
 }

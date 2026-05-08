@@ -17,6 +17,11 @@
 
 CORE_EXPORT bool CoreRollbackSaveGameState(CoreRollbackState& state, int frame)
 {
+    return CoreRollbackSaveGameStateInto(state, nullptr, 0, frame);
+}
+
+CORE_EXPORT bool CoreRollbackSaveGameStateInto(CoreRollbackState& state, unsigned char* buffer, int capacity, int frame)
+{
     std::string error;
     m64p_error ret;
     m64p_rollback_state coreState = {};
@@ -27,6 +32,8 @@ CORE_EXPORT bool CoreRollbackSaveGameState(CoreRollbackState& state, int frame)
     }
 
     coreState.frame = frame;
+    coreState.buffer = buffer;
+    coreState.len = capacity;
     ret = m64p::Core.DoCommand(M64CMD_ROLLBACK_SAVE_STATE, 0, &coreState);
     if (ret != M64ERR_SUCCESS)
     {
