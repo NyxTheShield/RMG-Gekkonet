@@ -34,6 +34,7 @@ set(RMG_CORE_SOURCES
     Emulation.cpp
     SaveState.cpp
     RollbackNetcode.cpp
+    rmgk_ggpo.cpp
     Callback.cpp
     Settings.cpp
     Archive.cpp
