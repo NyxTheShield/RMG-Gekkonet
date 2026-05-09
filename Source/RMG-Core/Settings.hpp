@@ -99,6 +99,7 @@ enum class SettingsID
     // Rollback Settings
     Rollback_VerboseStats,
     Rollback_HideMenu,
+    Rollback_PredictionWindow,
 
     // Core Plugin Settings
     Core_GFX_Plugin,

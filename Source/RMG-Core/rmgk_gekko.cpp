@@ -1008,7 +1008,7 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
     }
 
     const int clampedLocalDelay = std::clamp(localDelay, 0, 10);
-    const int predictionWindow = std::clamp(clampedLocalDelay > 0 ? clampedLocalDelay : 1, 1, 4);
+    const int predictionWindow = std::clamp(CoreSettingsGetIntValue(SettingsID::Rollback_PredictionWindow), 1, 10);
 
     GekkoConfig config = {};
     config.num_players = static_cast<unsigned char>(players);
@@ -1146,7 +1146,7 @@ CORE_EXPORT bool rmgk_gekko::start_local_session(const char* gameName, int playe
     }
 
     const int clampedLocalDelay = std::clamp(localDelay, 0, 10);
-    const int predictionWindow = std::clamp(clampedLocalDelay > 0 ? clampedLocalDelay : 1, 1, 4);
+    const int predictionWindow = std::clamp(CoreSettingsGetIntValue(SettingsID::Rollback_PredictionWindow), 1, 10);
 
     GekkoConfig config = {};
     config.num_players = static_cast<unsigned char>(players);

@@ -17,6 +17,7 @@
 #include <QCryptographicHash>
 #include <QRegularExpression>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QFileDialog>
 #include <QColorDialog>
 #include <QDirIterator>
@@ -228,8 +229,19 @@ SettingsDialog::SettingsDialog(QWidget *parent, QString file) : QDialog(parent)
     QVBoxLayout* rollbackLayout = new QVBoxLayout(rollbackTab);
     this->rollbackVerboseStatsCheckBox = new QCheckBox("Enable verbose rollback stats messaging", rollbackTab);
     this->rollbackHideMenuCheckBox = new QCheckBox("Hide rollback top menu", rollbackTab);
+    auto* rollbackPredictionWindowLayout = new QHBoxLayout();
+    auto* rollbackPredictionWindowLabel = new QLabel("Prediction window:", rollbackTab);
+    this->rollbackPredictionWindowSpinBox = new QSpinBox(rollbackTab);
+    this->rollbackPredictionWindowSpinBox->setRange(1, 10);
+    this->rollbackPredictionWindowSpinBox->setSuffix(" frames");
+    this->rollbackPredictionWindowSpinBox->setToolTip(
+        "How many frames GekkoNet may predict remote inputs before stalling. Higher values reduce slowdown on higher ping but can allow larger rollbacks.");
+    rollbackPredictionWindowLayout->addWidget(rollbackPredictionWindowLabel);
+    rollbackPredictionWindowLayout->addWidget(this->rollbackPredictionWindowSpinBox);
+    rollbackPredictionWindowLayout->addStretch();
     rollbackLayout->addWidget(this->rollbackVerboseStatsCheckBox);
     rollbackLayout->addWidget(this->rollbackHideMenuCheckBox);
+    rollbackLayout->addLayout(rollbackPredictionWindowLayout);
     rollbackLayout->addStretch();
     this->tabWidget->addTab(rollbackTab, "Rollback");
 
@@ -950,6 +962,7 @@ void SettingsDialog::loadRollbackSettings(void)
 {
     this->rollbackVerboseStatsCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::Rollback_VerboseStats));
     this->rollbackHideMenuCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::Rollback_HideMenu));
+    this->rollbackPredictionWindowSpinBox->setValue(CoreSettingsGetIntValue(SettingsID::Rollback_PredictionWindow));
 }
 
 void SettingsDialog::loadDefaultCoreSettings(void)
@@ -1158,6 +1171,7 @@ void SettingsDialog::loadDefaultRollbackSettings(void)
 {
     this->rollbackVerboseStatsCheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::Rollback_VerboseStats));
     this->rollbackHideMenuCheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::Rollback_HideMenu));
+    this->rollbackPredictionWindowSpinBox->setValue(CoreSettingsGetDefaultIntValue(SettingsID::Rollback_PredictionWindow));
 }
 
 void SettingsDialog::saveSettings(void)
@@ -1424,6 +1438,7 @@ void SettingsDialog::saveRollbackSettings(void)
 {
     CoreSettingsSetValue(SettingsID::Rollback_VerboseStats, this->rollbackVerboseStatsCheckBox->isChecked());
     CoreSettingsSetValue(SettingsID::Rollback_HideMenu, this->rollbackHideMenuCheckBox->isChecked());
+    CoreSettingsSetValue(SettingsID::Rollback_PredictionWindow, this->rollbackPredictionWindowSpinBox->value());
 }
 
 void SettingsDialog::commonHotkeySettings(SettingsDialogAction action)
