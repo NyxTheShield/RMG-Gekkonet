@@ -931,7 +931,8 @@ void MainWindow::checkRaphnetPluginMismatch(void)
         }
 
         // Update input settings button enabled state
-        bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input) || isRaphnetRawPlugin();
+        bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input) ||
+            (isRaphnetRawPlugin() && !CoreIsEmulationRunning());
         this->action_Settings_Input->setEnabled(hasInputConfig);
         this->action_Toolbar_Input->setEnabled(hasInputConfig);
     }
@@ -1332,9 +1333,11 @@ void MainWindow::updateActions(bool inEmulation, bool isPaused)
     this->action_Settings_Rsp->setEnabled(CorePluginsHasConfig(CorePluginType::Rsp));
     this->action_Settings_Rsp->setShortcut(QKeySequence(keyBinding));
     keyBinding = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::KeyBinding_InputSettings));
-    this->action_Settings_Input->setEnabled(CorePluginsHasConfig(CorePluginType::Input) || isRaphnetRawPlugin());
+    bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input);
+    bool hasRaphnetRawInputTest = isRaphnetRawPlugin() && !inEmulation;
+    this->action_Settings_Input->setEnabled(hasInputConfig || hasRaphnetRawInputTest);
     this->action_Settings_Input->setShortcut(QKeySequence(keyBinding));
-    this->action_Toolbar_Input->setEnabled(CorePluginsHasConfig(CorePluginType::Input) || isRaphnetRawPlugin());
+    this->action_Toolbar_Input->setEnabled(hasInputConfig || hasRaphnetRawInputTest);
     keyBinding = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::KeyBinding_Settings));
     this->action_Settings_Settings->setShortcut(QKeySequence(keyBinding));
 
@@ -2462,10 +2465,13 @@ void MainWindow::on_Action_Settings_Input(void)
 {
     // If raphnetraw is the active input plugin, open the input test dialog
     // (only when no ROM is running to avoid interfering with game input)
-    if (isRaphnetRawPlugin() && !CoreIsEmulationRunning())
+    if (isRaphnetRawPlugin())
     {
-        UserInterface::RaphnetInputDialog dialog(this);
-        dialog.exec();
+        if (!CoreIsEmulationRunning())
+        {
+            UserInterface::RaphnetInputDialog dialog(this);
+            dialog.exec();
+        }
         return;
     }
 
@@ -2484,7 +2490,8 @@ void MainWindow::on_Action_Settings_Input(void)
         }
 
         // Update input settings button enabled state
-        bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input) || isRaphnetRawPlugin();
+        bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input) ||
+            (isRaphnetRawPlugin() && !CoreIsEmulationRunning());
         this->action_Settings_Input->setEnabled(hasInputConfig);
         this->action_Toolbar_Input->setEnabled(hasInputConfig);
     }

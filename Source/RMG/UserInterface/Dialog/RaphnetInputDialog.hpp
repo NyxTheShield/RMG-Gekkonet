@@ -16,7 +16,9 @@
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QProgressBar>
+#include <QComboBox>
 #include <array>
+#include <vector>
 
 struct hid_device_;
 typedef struct hid_device_ hid_device;
@@ -38,6 +40,8 @@ private slots:
 private:
     bool openAdapter();
     void closeAdapter();
+    bool exchangeCommand(const unsigned char* command, int commandLength, unsigned char* response, int& responseLength);
+    bool setAdapterPollingSuspended(bool suspended);
     bool pollController(uint16_t& buttons, int8_t& xAxis, int8_t& yAxis);
 
     void setupUi();
@@ -46,6 +50,8 @@ private:
 
     hid_device* m_HidDevice = nullptr;
     int m_ReportSize = 63;
+    int m_ChannelCount = 1;
+    int m_FailedPollCount = 0;
     QTimer* m_PollTimer = nullptr;
 
     // Button indicators (label + state label pairs)
@@ -64,6 +70,7 @@ private:
     QProgressBar* m_YAxisBar = nullptr;
 
     QLabel* m_StatusLabel = nullptr;
+    QComboBox* m_PortComboBox = nullptr;
 };
 
 } // namespace UserInterface

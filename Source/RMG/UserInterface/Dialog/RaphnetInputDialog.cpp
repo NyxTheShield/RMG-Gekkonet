@@ -15,13 +15,16 @@
 #include <QHBoxLayout>
 #include <QDialogButtonBox>
 #include <QPushButton>
+#include <QComboBox>
 #include <cstring>
+#include <cstdint>
 
 // Raphnet adapter USB vendor ID
 #define RAPHNET_VID 0x289b
 
 // raphnet HID protocol request for raw SI command
 #define RQ_GCN64_RAW_SI_COMMAND 0x80
+#define RQ_GCN64_SUSPEND_POLLING 0x03
 
 // N64 controller command to read button/axis state
 #define N64_GET_STATUS 0x01
@@ -42,6 +45,60 @@
 #define N64_BTN_CDOWN   0x0004
 #define N64_BTN_CLEFT   0x0002
 #define N64_BTN_CRIGHT  0x0001
+
+namespace
+{
+
+struct RaphnetAdapterDef
+{
+    uint16_t productId;
+    int interfaceNumber;
+    int rawChannels;
+    int reportSize;
+};
+
+// Keep this in sync with the raphnetraw plugin's supported_adapters table.
+const RaphnetAdapterDef g_RaphnetAdapters[] = {
+    { 0x0017, 1, 1, 40 },
+    { 0x001D, 1, 1, 40 },
+    { 0x0020, 1, 1, 40 },
+    { 0x0021, 1, 1, 40 },
+    { 0x0022, 1, 2, 40 },
+    { 0x0030, 1, 2, 40 },
+    { 0x0031, 1, 2, 40 },
+    { 0x0032, 1, 1, 63 },
+    { 0x0033, 1, 1, 63 },
+    { 0x0034, 1, 1, 63 },
+    { 0x0035, 1, 2, 63 },
+    { 0x0036, 1, 2, 63 },
+    { 0x0037, 1, 2, 63 },
+    { 0x0038, 1, 1, 63 },
+    { 0x0039, 1, 1, 63 },
+    { 0x003A, 1, 1, 63 },
+    { 0x003B, 2, 2, 63 },
+    { 0x003C, 2, 2, 63 },
+    { 0x003D, 2, 2, 63 },
+    { 0x0060, 1, 1, 63 },
+    { 0x0061, 1, 1, 63 },
+    { 0x0063, 2, 2, 63 },
+    { 0x0064, 2, 2, 63 },
+    { 0x0067, 1, 1, 63 },
+};
+
+const RaphnetAdapterDef* findRaphnetAdapter(uint16_t productId, int interfaceNumber)
+{
+    for (const RaphnetAdapterDef& adapter : g_RaphnetAdapters)
+    {
+        if (adapter.productId == productId && adapter.interfaceNumber == interfaceNumber)
+        {
+            return &adapter;
+        }
+    }
+
+    return nullptr;
+}
+
+} // namespace
 
 using namespace UserInterface;
 
@@ -81,6 +138,15 @@ void RaphnetInputDialog::setupUi()
 
     m_StatusLabel = new QLabel("Searching for adapter...", this);
     mainLayout->addWidget(m_StatusLabel);
+
+    QHBoxLayout* portLayout = new QHBoxLayout();
+    portLayout->addWidget(new QLabel("Port:", this));
+    m_PortComboBox = new QComboBox(this);
+    m_PortComboBox->addItem("1", 0);
+    m_PortComboBox->setEnabled(false);
+    portLayout->addWidget(m_PortComboBox);
+    portLayout->addStretch();
+    mainLayout->addLayout(portLayout);
 
     // Buttons group
     QGroupBox* buttonsGroup = new QGroupBox("Buttons", this);
@@ -174,21 +240,22 @@ bool RaphnetInputDialog::openAdapter()
 {
     hid_init();
 
-    // Enumerate all raphnet devices
+    // Enumerate all raphnet devices and open the raw-access interface.
     struct hid_device_info* devs = hid_enumerate(RAPHNET_VID, 0);
     struct hid_device_info* cur = devs;
 
     while (cur)
     {
-        // Open the first raphnet device found on the management interface (1 or 2)
-        if (cur->interface_number >= 1)
+        const RaphnetAdapterDef* adapter = findRaphnetAdapter(
+            static_cast<uint16_t>(cur->product_id), cur->interface_number);
+
+        if (adapter != nullptr)
         {
             m_HidDevice = hid_open_path(cur->path);
             if (m_HidDevice)
             {
-                // Pre-3.4 adapters use 40-byte reports, newer use 63
-                // We'll default to 63 and handle errors gracefully
-                m_ReportSize = 63;
+                m_ReportSize = adapter->reportSize;
+                m_ChannelCount = adapter->rawChannels;
                 hid_set_nonblocking(m_HidDevice, 1);
                 break;
             }
@@ -197,6 +264,18 @@ bool RaphnetInputDialog::openAdapter()
     }
 
     hid_free_enumeration(devs);
+
+    if (m_HidDevice != nullptr)
+    {
+        m_PortComboBox->clear();
+        for (int i = 0; i < m_ChannelCount; i++)
+        {
+            m_PortComboBox->addItem(QString::number(i + 1), i);
+        }
+        m_PortComboBox->setEnabled(m_ChannelCount > 1);
+        setAdapterPollingSuspended(true);
+    }
+
     return m_HidDevice != nullptr;
 }
 
@@ -204,10 +283,69 @@ void RaphnetInputDialog::closeAdapter()
 {
     if (m_HidDevice)
     {
+        setAdapterPollingSuspended(false);
         hid_close(m_HidDevice);
         m_HidDevice = nullptr;
     }
     hid_exit();
+}
+
+bool RaphnetInputDialog::exchangeCommand(const unsigned char* command, int commandLength, unsigned char* response, int& responseLength)
+{
+    if (!m_HidDevice || !command || !response || commandLength <= 0 || commandLength > m_ReportSize)
+    {
+        return false;
+    }
+
+    unsigned char buffer[64];
+    memset(buffer, 0, sizeof(buffer));
+    buffer[0] = 0x00; // HID report ID
+    memcpy(buffer + 1, command, static_cast<size_t>(commandLength));
+
+    int n = hid_send_feature_report(m_HidDevice, buffer, m_ReportSize + 1);
+    if (n < 0)
+    {
+        return false;
+    }
+
+    for (int attempt = 0; attempt < 8; attempt++)
+    {
+        memset(buffer, 0, sizeof(buffer));
+        buffer[0] = 0x00;
+
+        n = hid_get_feature_report(m_HidDevice, buffer, m_ReportSize + 1);
+        if (n < 0)
+        {
+            return false;
+        }
+
+        if (n <= 1)
+        {
+            continue;
+        }
+
+        responseLength = n - 1;
+        memcpy(response, buffer + 1, static_cast<size_t>(responseLength));
+
+        if (response[0] == command[0])
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool RaphnetInputDialog::setAdapterPollingSuspended(bool suspended)
+{
+    unsigned char command[2];
+    unsigned char response[64];
+    int responseLength = 0;
+
+    command[0] = RQ_GCN64_SUSPEND_POLLING;
+    command[1] = suspended ? 1 : 0;
+
+    return exchangeCommand(command, sizeof(command), response, responseLength);
 }
 
 bool RaphnetInputDialog::pollController(uint16_t& buttons, int8_t& xAxis, int8_t& yAxis)
@@ -217,43 +355,37 @@ bool RaphnetInputDialog::pollController(uint16_t& buttons, int8_t& xAxis, int8_t
 
     // Build raw SI command: request N64 controller status
     // Protocol: [RQ_GCN64_RAW_SI_COMMAND, channel, tx_len, N64_GET_STATUS]
-    // Max report size is 63 bytes + 1 for report ID
-    unsigned char cmd[64];
+    unsigned char cmd[4];
     memset(cmd, 0, sizeof(cmd));
-    cmd[0] = 0x00; // HID report ID
-    cmd[1] = RQ_GCN64_RAW_SI_COMMAND;
-    cmd[2] = 0x00; // channel 0
-    cmd[3] = 0x01; // tx_len = 1 byte
-    cmd[4] = N64_GET_STATUS;
-
-    int n = hid_send_feature_report(m_HidDevice, cmd, m_ReportSize + 1);
-    if (n < 0)
-        return false;
+    cmd[0] = RQ_GCN64_RAW_SI_COMMAND;
+    cmd[1] = static_cast<unsigned char>(m_PortComboBox->currentData().toInt());
+    cmd[2] = 0x01; // tx_len = 1 byte
+    cmd[3] = N64_GET_STATUS;
 
     // Read response
     unsigned char response[64];
+    int responseLength = 0;
     memset(response, 0, sizeof(response));
-    response[0] = 0x00; // report ID
 
-    n = hid_get_feature_report(m_HidDevice, response, m_ReportSize + 1);
-    if (n < 0)
+    if (!exchangeCommand(cmd, sizeof(cmd), response, responseLength))
+    {
         return false;
+    }
 
-    // Response format: [report_type, ..., rx_len, data...]
-    // The raw SI response starts at offset 3 in the report payload (offset 4 with report ID)
-    // response[1] = echo of request type
-    // response[2] = channel
-    // response[3] = rx_len
-    // response[4..] = rx_data
+    // Response format: [report_type, channel, rx_len, rx_data...]
+    if (responseLength < 7)
+    {
+        return false;
+    }
 
-    unsigned char rxLen = response[3];
+    unsigned char rxLen = response[2];
     if (rxLen < 4)
         return false;
 
     // Parse N64 controller status (4 bytes)
-    buttons = (static_cast<uint16_t>(response[4]) << 8) | response[5];
-    xAxis = static_cast<int8_t>(response[6]);
-    yAxis = static_cast<int8_t>(response[7]);
+    buttons = (static_cast<uint16_t>(response[3]) << 8) | response[4];
+    xAxis = static_cast<int8_t>(response[5]);
+    yAxis = static_cast<int8_t>(response[6]);
 
     return true;
 }
@@ -265,8 +397,18 @@ void RaphnetInputDialog::onPollTimer()
 
     if (pollController(buttons, xAxis, yAxis))
     {
+        m_FailedPollCount = 0;
+        m_StatusLabel->setText("Adapter connected. Press buttons on the N64 controller.");
         updateButtonIndicators(buttons);
         updateAxisDisplay(xAxis, yAxis);
+    }
+    else
+    {
+        m_FailedPollCount++;
+        if (m_FailedPollCount >= 30)
+        {
+            m_StatusLabel->setText("Adapter connected, but the selected port did not answer.");
+        }
     }
 }
 
