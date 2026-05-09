@@ -1927,7 +1927,8 @@ static int savestates_save_m64p(const struct device* dev, char *filepath)
         return 0;
     }
 
-    memset(save->data, 0, allocation_size);
+    if (!rollback_buffer_save)
+        memset(save->data, 0, allocation_size);
 
     // Write the save state data to memory
     PUTARRAY(savestate_magic, curr, unsigned char, 8);
