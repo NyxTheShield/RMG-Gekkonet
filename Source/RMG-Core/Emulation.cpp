@@ -64,7 +64,7 @@ extern "C" {
     typedef void (*pif_sync_callback_t)(struct pif*);
 }
 
-static bool parse_gekko_address(const std::string& address, std::string& remoteAddress, int& remotePort, int& frameDelay)
+static bool parse_gekko_address(const std::string& address, std::string& remoteAddress, int& remotePort, int& frameDelay, int& predictionWindow)
 {
     constexpr const char* prefix = "GEKKO|";
     if (address.rfind(prefix, 0) != 0)
@@ -83,19 +83,29 @@ static bool parse_gekko_address(const std::string& address, std::string& remoteA
     {
         return false;
     }
+    const size_t predictionSeparator = address.find('|', delaySeparator + 1);
 
     remoteAddress = address.substr(remoteStart, portSeparator - remoteStart);
     try
     {
         remotePort = std::stoi(address.substr(portSeparator + 1, delaySeparator - portSeparator - 1));
-        frameDelay = std::stoi(address.substr(delaySeparator + 1));
+        if (predictionSeparator == std::string::npos)
+        {
+            frameDelay = std::stoi(address.substr(delaySeparator + 1));
+            predictionWindow = 4;
+        }
+        else
+        {
+            frameDelay = std::stoi(address.substr(delaySeparator + 1, predictionSeparator - delaySeparator - 1));
+            predictionWindow = std::stoi(address.substr(predictionSeparator + 1));
+        }
     }
     catch (...)
     {
         return false;
     }
 
-    return !remoteAddress.empty() && remotePort > 0 && remotePort <= 65535 && frameDelay >= 0;
+    return !remoteAddress.empty() && remotePort > 0 && remotePort <= 65535 && frameDelay >= 0 && predictionWindow >= 1;
 }
 
 //
@@ -528,7 +538,8 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
             std::string remoteAddress;
             int remotePort = 0;
             int frameDelay = 0;
-            if (!parse_gekko_address(address, remoteAddress, remotePort, frameDelay))
+            int predictionWindow = 4;
+            if (!parse_gekko_address(address, remoteAddress, remotePort, frameDelay, predictionWindow))
             {
                 CoreSetError("CoreStartEmulation: invalid GekkoNet session parameters");
                 m64p_ret = M64ERR_INPUT_INVALID;
@@ -544,7 +555,7 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
                 CoreSettingsSetValue(SettingsID::Core_CPU_Emulator, 2);
                 netplay_ret = rmgk_gekko::start_p2p_session("rmgk-gekko",
                     2, static_cast<int>(sizeof(uint32_t)), player, static_cast<unsigned short>(port),
-                    remoteAddress.c_str(), static_cast<unsigned short>(remotePort), frameDelay);
+                    remoteAddress.c_str(), static_cast<unsigned short>(remotePort), frameDelay, predictionWindow);
                 if (!netplay_ret)
                 {
                     if (CoreGetError().empty())

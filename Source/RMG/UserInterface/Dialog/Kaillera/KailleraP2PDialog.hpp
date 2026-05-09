@@ -37,7 +37,7 @@ public:
 
 signals:
     void peerNicknameResolved(QString nickname);
-    void rollbackSessionReady(QString gameName, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay);
+    void rollbackSessionReady(QString gameName, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay, int predictionWindow);
 
 protected:
     void reject() override;
@@ -112,6 +112,7 @@ private:
     // Host group
     QGroupBox* m_hostGroup = nullptr;
     QComboBox* m_frameDelayCombo = nullptr;
+    QComboBox* m_predictionWindowCombo = nullptr;
     QLineEdit* m_connectCodeEdit = nullptr;
     QAction* m_copyAction = nullptr;
 

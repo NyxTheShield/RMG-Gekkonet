@@ -350,14 +350,15 @@ bool load_gekko_state(const GekkoGameEvent* event)
 
 bool submit_local_input()
 {
-    std::vector<uint32_t> physicalInputs(static_cast<size_t>(std::max(g_GekkoPlayers, 1)), 0);
-    if (!CoreRollbackSampleInput(physicalInputs.data(), g_GekkoInputSize, g_GekkoPlayers))
+    const bool localOnlySession = g_GekkoRemoteHandle < 0 && g_GekkoLocalHandles.size() > 1;
+    const int samplePlayers = localOnlySession ? g_GekkoPlayers : 1;
+    std::vector<uint32_t> physicalInputs(static_cast<size_t>(std::max(samplePlayers, 1)), 0);
+    if (!CoreRollbackSampleInput(physicalInputs.data(), g_GekkoInputSize, samplePlayers))
     {
         write_gekko_log("add_local_input sample=fail");
         return false;
     }
 
-    const bool localOnlySession = g_GekkoRemoteHandle < 0 && g_GekkoLocalHandles.size() > 1;
     bool submitted = false;
 
     for (int player = 1; player <= g_GekkoPlayers; player++)
@@ -975,7 +976,7 @@ int rollback_execute_end_frame(void* userData)
 } // namespace
 
 CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players, int inputSize,
-    int localPlayer, unsigned short localPort, const char* remoteIp, unsigned short remotePort, int localDelay)
+    int localPlayer, unsigned short localPort, const char* remoteIp, unsigned short remotePort, int localDelay, int predictionWindow)
 {
 #ifndef RMGK_HAVE_GEKKONET
     (void)gameName;
@@ -986,6 +987,7 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
     (void)remoteIp;
     (void)remotePort;
     (void)localDelay;
+    (void)predictionWindow;
     return false;
 #else
     close_session();
@@ -1008,12 +1010,12 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
     }
 
     const int clampedLocalDelay = std::clamp(localDelay, 0, 10);
-    const int predictionWindow = std::clamp(CoreSettingsGetIntValue(SettingsID::Rollback_PredictionWindow), 1, 10);
+    const int clampedPredictionWindow = std::clamp(predictionWindow, 1, 10);
 
     GekkoConfig config = {};
     config.num_players = static_cast<unsigned char>(players);
     config.max_spectators = 0;
-    config.input_prediction_window = static_cast<unsigned char>(predictionWindow);
+    config.input_prediction_window = static_cast<unsigned char>(clampedPredictionWindow);
     config.input_size = static_cast<unsigned int>(inputSize);
     config.state_size = kGekkoStateCapacity;
     config.limited_saving = false;
@@ -1045,6 +1047,7 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
                << " local_delay=" << localDelay
                << " clamped_local_delay=" << clampedLocalDelay
                << " prediction_window=" << predictionWindow
+               << " clamped_prediction_window=" << clampedPredictionWindow
                << " cpu_mode=dynarec"
                << " dynarec_rollback=pumped"
                << " state_capacity=" << kGekkoStateCapacity;
@@ -1146,7 +1149,7 @@ CORE_EXPORT bool rmgk_gekko::start_local_session(const char* gameName, int playe
     }
 
     const int clampedLocalDelay = std::clamp(localDelay, 0, 10);
-    const int predictionWindow = std::clamp(CoreSettingsGetIntValue(SettingsID::Rollback_PredictionWindow), 1, 10);
+    const int predictionWindow = 4;
 
     GekkoConfig config = {};
     config.num_players = static_cast<unsigned char>(players);

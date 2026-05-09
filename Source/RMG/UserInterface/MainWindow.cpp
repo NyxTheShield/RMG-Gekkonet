@@ -4275,7 +4275,7 @@ void MainWindow::on_Kaillera_GameStarted(QString gameName, int playerNum, int to
     this->launchEmulationThread(romFile, "", false, -1, true);
 }
 
-void MainWindow::on_Rollback_SessionRequested(QString gameName, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay)
+void MainWindow::on_Rollback_SessionRequested(QString gameName, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay, int predictionWindow)
 {
     if (this->ui_RollbackNetplayLaunchActive)
     {
@@ -4294,9 +4294,9 @@ void MainWindow::on_Rollback_SessionRequested(QString gameName, QString remoteAd
     {
         CoreStopEmulation();
         QTimer::singleShot(50, this,
-            [this, gameName, remoteAddress, localPort, remotePort, localPlayer, frameDelay]()
+            [this, gameName, remoteAddress, localPort, remotePort, localPlayer, frameDelay, predictionWindow]()
             {
-                this->on_Rollback_SessionRequested(gameName, remoteAddress, localPort, remotePort, localPlayer, frameDelay);
+                this->on_Rollback_SessionRequested(gameName, remoteAddress, localPort, remotePort, localPlayer, frameDelay, predictionWindow);
             });
         return;
     }
@@ -4309,7 +4309,7 @@ void MainWindow::on_Rollback_SessionRequested(QString gameName, QString remoteAd
         this->ui_CheckVideoSizeTimerId = 0;
     }
 
-    this->emulationThread->SetGekkoNetplay(remoteAddress, localPort, remotePort, localPlayer, frameDelay);
+    this->emulationThread->SetGekkoNetplay(remoteAddress, localPort, remotePort, localPlayer, frameDelay, predictionWindow);
     this->launchEmulationThread(romFile, "", false, -1, true);
 }
 

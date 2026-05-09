@@ -49,7 +49,7 @@ public:
 
 signals:
     void rollbackSessionPreparing();
-    void rollbackSessionRequested(QString gameName, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay);
+    void rollbackSessionRequested(QString gameName, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay, int predictionWindow);
 
 private slots:
     void onStateMachineTimer();

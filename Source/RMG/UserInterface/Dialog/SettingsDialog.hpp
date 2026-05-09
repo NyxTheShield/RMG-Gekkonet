@@ -16,7 +16,6 @@
 #include <QStandardItemModel>
 #include <QHBoxLayout>
 #include <QCheckBox>
-#include <QSpinBox>
 #include <QStringList>
 #include <QTreeWidget>
 #include <QDialog>
@@ -71,7 +70,6 @@ class SettingsDialog : public QDialog, private Ui::SettingsDialog
     QColor currentTextColor;
     QCheckBox* rollbackVerboseStatsCheckBox = nullptr;
     QCheckBox* rollbackHideMenuCheckBox = nullptr;
-    QSpinBox* rollbackPredictionWindowSpinBox = nullptr;
 
     std::vector<CorePlugin> pluginList;
 

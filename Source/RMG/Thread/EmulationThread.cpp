@@ -54,9 +54,10 @@ void EmulationThread::SetNetplay(QString address, int port, int player)
     this->player  = player;
 }
 
-void EmulationThread::SetGekkoNetplay(QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay)
+void EmulationThread::SetGekkoNetplay(QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay, int predictionWindow)
 {
-    this->address = "GEKKO|" + remoteAddress + "|" + QString::number(remotePort) + "|" + QString::number(frameDelay);
+    this->address = "GEKKO|" + remoteAddress + "|" + QString::number(remotePort) + "|" +
+        QString::number(frameDelay) + "|" + QString::number(predictionWindow);
     this->port = localPort;
     this->player = localPlayer;
 }

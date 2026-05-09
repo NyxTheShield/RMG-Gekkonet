@@ -593,10 +593,40 @@ void KailleraP2PDialog::setupUI()
         fdlyLayout->addWidget(m_frameDelayCombo);
         hostLayout->addLayout(fdlyLayout);
 
+        QLabel* predictionWindowLabel = nullptr;
+        if (m_rollbackMode)
+        {
+            auto* predictionLayout = new QHBoxLayout();
+            predictionLayout->setContentsMargins(0, 0, 0, 0);
+            predictionLayout->setSpacing(6);
+            predictionWindowLabel = new QLabel("Prediction Window:", m_hostGroup);
+            predictionLayout->addWidget(predictionWindowLabel);
+            m_predictionWindowCombo = new QComboBox(m_hostGroup);
+            m_predictionWindowCombo->setObjectName("KailleraP2PCombo");
+            m_predictionWindowCombo->setMinimumWidth(140);
+            m_predictionWindowCombo->setSizeAdjustPolicy(QComboBox::AdjustToContentsOnFirstShow);
+            configureP2PComboPopup(m_predictionWindowCombo, theme);
+            for (int frames = 1; frames <= 10; frames++)
+            {
+                m_predictionWindowCombo->addItem(frames == 1 ? "1 frame" : QString("%1 frames").arg(frames));
+            }
+            QSettings settings("RMG-K", "n02");
+            int predictionWindow = settings.value("Rollback_PredictionWindow", 4).toInt();
+            if (predictionWindow < 1 || predictionWindow > 10) predictionWindow = 4;
+            m_predictionWindowCombo->setCurrentIndex(predictionWindow - 1);
+            connect(m_predictionWindowCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [](int index) {
+                QSettings settings("RMG-K", "n02");
+                settings.setValue("Rollback_PredictionWindow", index + 1);
+            });
+            predictionLayout->addWidget(m_predictionWindowCombo);
+            hostLayout->addLayout(predictionLayout);
+        }
+
         const QMargins hostMargins = hostLayout->contentsMargins();
         const int hostMinWidth =
             hostMargins.left() +
-            frameDelayLabel->sizeHint().width() +
+            std::max(frameDelayLabel->sizeHint().width(),
+                predictionWindowLabel != nullptr ? predictionWindowLabel->sizeHint().width() : 0) +
             fdlyLayout->spacing() +
             m_frameDelayCombo->minimumWidth() +
             hostMargins.right();
@@ -1249,6 +1279,7 @@ void KailleraP2PDialog::onGameStarted(QString game, int player, int maxPlayers)
         int peerPort = 0;
         const int localPort = p2p_core_get_port();
         const int frameDelay = (m_frameDelayCombo != nullptr) ? m_frameDelayCombo->currentIndex() : 0;
+        const int predictionWindow = (m_predictionWindowCombo != nullptr) ? m_predictionWindowCombo->currentIndex() + 1 : 4;
         if (!p2p_core_get_peer_endpoint(peerIp, sizeof(peerIp), &peerPort))
         {
             m_chat->append("<span style='color:red;'>" + timestamp() + "Could not get rollback peer endpoint.</span>");
@@ -1262,7 +1293,7 @@ void KailleraP2PDialog::onGameStarted(QString game, int player, int maxPlayers)
         m_detachedForRollback = true;
         p2p_core_cleanup();
 
-        emit rollbackSessionReady(game, QString::fromUtf8(peerIp), localPort, peerPort, player, frameDelay);
+        emit rollbackSessionReady(game, QString::fromUtf8(peerIp), localPort, peerPort, player, frameDelay, predictionWindow);
         accept();
         return;
     }

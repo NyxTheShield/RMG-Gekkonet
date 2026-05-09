@@ -327,9 +327,6 @@ static l_Setting get_setting(SettingsID settingId)
     case SettingsID::Rollback_HideMenu:
         setting = {SETTING_SECTION_ROLLBACK, "HideMenu", false};
         break;
-    case SettingsID::Rollback_PredictionWindow:
-        setting = {SETTING_SECTION_ROLLBACK, "PredictionWindow", 4};
-        break;
 
     case SettingsID::Core_GFX_Plugin:
         setting = {SETTING_SECTION_CORE, "GFX_Plugin", 

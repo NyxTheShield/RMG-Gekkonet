@@ -3222,13 +3222,13 @@ void KailleraNetplayDialog::onRollbackHost()
     QString username = QString::fromUtf8(usernameBytes);
     KailleraP2PDialog p2pDialog(true, gameName, username, QString(), nullptr, true);
     connect(&p2pDialog, &KailleraP2PDialog::rollbackSessionReady, this,
-        [this, &rollbackLaunched](QString game, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay) {
+        [this, &rollbackLaunched](QString game, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay, int predictionWindow) {
             if (rollbackLaunched)
             {
                 return;
             }
             rollbackLaunched = true;
-            emit rollbackSessionRequested(game, remoteAddress, localPort, remotePort, localPlayer, frameDelay);
+            emit rollbackSessionRequested(game, remoteAddress, localPort, remotePort, localPlayer, frameDelay, predictionWindow);
         },
         Qt::DirectConnection);
     p2pDialog.show();
@@ -3328,13 +3328,13 @@ void KailleraNetplayDialog::onRollbackJoin()
         },
         Qt::QueuedConnection);
     connect(&p2pDialog, &KailleraP2PDialog::rollbackSessionReady, this,
-        [this, &rollbackLaunched](QString game, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay) {
+        [this, &rollbackLaunched](QString game, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay, int predictionWindow) {
             if (rollbackLaunched)
             {
                 return;
             }
             rollbackLaunched = true;
-            emit rollbackSessionRequested(game, remoteAddress, localPort, remotePort, localPlayer, frameDelay);
+            emit rollbackSessionRequested(game, remoteAddress, localPort, remotePort, localPlayer, frameDelay, predictionWindow);
         },
         Qt::DirectConnection);
     p2pDialog.show();

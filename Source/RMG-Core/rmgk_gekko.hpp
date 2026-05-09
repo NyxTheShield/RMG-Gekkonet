@@ -22,7 +22,7 @@ class rmgk_gekko
     using FrameCallback = bool (*)(void* userData);
 
     static bool start_p2p_session(const char* gameName, int players, int inputSize,
-        int localPlayer, unsigned short localPort, const char* remoteIp, unsigned short remotePort, int localDelay);
+        int localPlayer, unsigned short localPort, const char* remoteIp, unsigned short remotePort, int localDelay, int predictionWindow);
     static bool start_local_session(const char* gameName, int players, int inputSize, int localDelay);
     static void close_session();
     static void request_stop();
