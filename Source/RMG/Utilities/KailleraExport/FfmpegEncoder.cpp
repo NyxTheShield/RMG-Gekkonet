@@ -250,7 +250,7 @@ static bool runFfmpegCommand(const std::string& command, std::string* errorMessa
         return fail(errorMessage, "Failed to run FFmpeg");
     }
 
-    WaitForSingleObject(processInfo.hProcess, 60000);
+    WaitForSingleObject(processInfo.hProcess, INFINITE);
     DWORD exitCode = 1;
     GetExitCodeProcess(processInfo.hProcess, &exitCode);
     CloseHandle(processInfo.hProcess);
@@ -436,7 +436,7 @@ void FfmpegEncoder::close()
 #ifdef _WIN32
     if (m_ProcessHandle != nullptr)
     {
-        WaitForSingleObject(reinterpret_cast<HANDLE>(m_ProcessHandle), 30000);
+        WaitForSingleObject(reinterpret_cast<HANDLE>(m_ProcessHandle), INFINITE);
         CloseHandle(reinterpret_cast<HANDLE>(m_ProcessHandle));
         m_ProcessHandle = nullptr;
     }

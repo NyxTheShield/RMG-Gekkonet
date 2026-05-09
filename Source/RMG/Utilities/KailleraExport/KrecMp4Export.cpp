@@ -226,6 +226,12 @@ static bool requireExistingFile(const std::filesystem::path& path,
     return false;
 }
 
+static void removeFileIfPresent(const std::filesystem::path& path)
+{
+    std::error_code errorCode;
+    std::filesystem::remove(path, errorCode);
+}
+
 static bool runReplayExport(const ReplayExportOptions& options, std::string* errorMessage)
 {
     const std::filesystem::path outputDirectory = options.outputPath.parent_path();
@@ -385,8 +391,8 @@ static bool runReplayExport(const ReplayExportOptions& options, std::string* err
         {
             *errorMessage = frameCaptureError;
         }
-        std::filesystem::remove(tempVideoPath);
-        std::filesystem::remove(tempAudioPath);
+        removeFileIfPresent(tempVideoPath);
+        removeFileIfPresent(tempAudioPath);
         return false;
     }
 
@@ -409,8 +415,8 @@ static bool runReplayExport(const ReplayExportOptions& options, std::string* err
         {
             *errorMessage = "Replay export emulation failed";
         }
-        std::filesystem::remove(tempVideoPath);
-        std::filesystem::remove(tempAudioPath);
+        removeFileIfPresent(tempVideoPath);
+        removeFileIfPresent(tempAudioPath);
         return false;
     }
 
@@ -421,8 +427,8 @@ static bool runReplayExport(const ReplayExportOptions& options, std::string* err
         {
             *errorMessage = "Replay export did not capture any frames";
         }
-        std::filesystem::remove(tempVideoPath);
-        std::filesystem::remove(tempAudioPath);
+        removeFileIfPresent(tempVideoPath);
+        removeFileIfPresent(tempAudioPath);
         return false;
     }
 
@@ -456,8 +462,8 @@ static bool runReplayExport(const ReplayExportOptions& options, std::string* err
                 {
                     *errorMessage = "Audio mux failed and video-only fallback could not be saved";
                 }
-                std::filesystem::remove(tempVideoPath);
-                std::filesystem::remove(tempAudioPath);
+                removeFileIfPresent(tempVideoPath);
+                removeFileIfPresent(tempAudioPath);
                 return false;
             }
         }
@@ -471,14 +477,14 @@ static bool runReplayExport(const ReplayExportOptions& options, std::string* err
             {
                 *errorMessage = "Failed to move exported video into place";
             }
-            std::filesystem::remove(tempVideoPath);
-            std::filesystem::remove(tempAudioPath);
+            removeFileIfPresent(tempVideoPath);
+            removeFileIfPresent(tempAudioPath);
             return false;
         }
     }
 
-    std::filesystem::remove(tempVideoPath);
-    std::filesystem::remove(tempAudioPath);
+    removeFileIfPresent(tempVideoPath);
+    removeFileIfPresent(tempAudioPath);
     return true;
 }
 
