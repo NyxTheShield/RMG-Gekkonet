@@ -10,6 +10,7 @@
 #ifndef RMG_ONSCREENDISPLAY_HPP
 #define RMG_ONSCREENDISPLAY_HPP
 
+#include <array>
 #include <string>
 
 // attempts to initialize the OSD
@@ -32,6 +33,9 @@ void OnScreenDisplaySetMessage(std::string message);
 // (pass an empty string to clear queued chat messages)
 void OnScreenDisplaySetKailleraChatMessage(std::string message);
 
+// enables or disables rendering queued Kaillera chat messages
+void OnScreenDisplaySetKailleraChatEnabled(bool enabled);
+
 // adds a Kaillera in-game chat message without slide-in animation
 // (pass an empty string to clear queued chat messages)
 void OnScreenDisplaySetKailleraChatMessageImmediate(std::string message);
@@ -39,6 +43,12 @@ void OnScreenDisplaySetKailleraChatMessageImmediate(std::string message);
 // sets the live input prompt message shown in the OSD message stack
 // (pass an empty string to hide the input prompt)
 void OnScreenDisplaySetInputPrompt(std::string message);
+
+// sets live Kaillera port labels rendered by the OSD
+void OnScreenDisplaySetKailleraPortLabels(int playerCount, const std::array<std::string, 4>& playerNames);
+
+// clears live Kaillera port labels
+void OnScreenDisplayClearKailleraPortLabels(void);
 
 // renders the OSD
 void OnScreenDisplayRender(void);

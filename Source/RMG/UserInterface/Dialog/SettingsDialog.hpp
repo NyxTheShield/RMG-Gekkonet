@@ -133,6 +133,7 @@ class SettingsDialog : public QDialog, private Ui::SettingsDialog
     void setIconsForEmulationInfoText(void);
     void hideEmulationInfoText(void);
     void updateKailleraRecordingCapControls(void);
+    void updateOSDSettingsEnabledState(void);
 
     void chooseDirectory(QLineEdit *, QString caption);
     void chooseFile(QLineEdit *, QString caption, QString filter = "", QStringList md5List = {});

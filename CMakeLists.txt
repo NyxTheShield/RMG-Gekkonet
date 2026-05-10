@@ -123,6 +123,9 @@ endif()
 add_subdirectory(Source/RMG-Core)
 add_subdirectory(Source/RMG)
 add_subdirectory(Source/RMG-Audio)
+if (WIN32 AND NETPLAY)
+    add_subdirectory(Source/RMG-Audio-Capture)
+endif()
 add_subdirectory(Source/RMG-Input)
 add_subdirectory(Source/RMG-Input-GCA)
 install(TARGETS RMG-Core
@@ -134,6 +137,11 @@ install(TARGETS RMG
 install(TARGETS RMG-Audio
     DESTINATION ${PLUGIN_INSTALL_PATH}/Audio
 )
+if (WIN32 AND NETPLAY)
+    install(TARGETS RMG-Audio-Capture
+        DESTINATION ${PLUGIN_INSTALL_PATH}/Audio
+    )
+endif()
 install(TARGETS RMG-Input RMG-Input-GCA
     DESTINATION ${PLUGIN_INSTALL_PATH}/Input
 )

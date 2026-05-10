@@ -216,6 +216,8 @@ SettingsDialog::SettingsDialog(QWidget *parent, QString file) : QDialog(parent)
         const QString currentTheme = selectedThemeValue(this->themeComboBox);
         populateThemeCombo(this->themeComboBox, collectAvailableThemeOptions(), checked, currentTheme);
     });
+    connect(this->osdEnabledCheckBox, &QCheckBox::toggled, this, &SettingsDialog::updateOSDSettingsEnabledState);
+    connect(this->osdChatEnabledCheckBox, &QCheckBox::toggled, this, &SettingsDialog::updateOSDSettingsEnabledState);
 
     setupDirectoryChangeButtonIcon(this->changeScreenShotDirButton);
     setupDirectoryChangeButtonIcon(this->changeSaveStateDirButton);
@@ -890,12 +892,14 @@ void SettingsDialog::loadInterfaceLogSettings(void)
 void SettingsDialog::loadInterfaceOSDSettings(void)
 {
     this->osdEnabledCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::GUI_OnScreenDisplayEnabled));
+    this->osdChatEnabledCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::GUI_OnScreenDisplayChatEnabled));
     this->osdLocationComboBox->setCurrentIndex(CoreSettingsGetIntValue(SettingsID::GUI_OnScreenDisplayLocation));
     this->osdVerticalPaddingSpinBox->setValue(CoreSettingsGetIntValue(SettingsID::GUI_OnScreenDisplayPaddingY));
     this->osdHorizontalPaddingSpinBox->setValue(CoreSettingsGetIntValue(SettingsID::GUI_OnScreenDisplayPaddingX));
     this->osdDurationSpinBox->setValue(CoreSettingsGetIntValue(SettingsID::GUI_OnScreenDisplayDuration));
     this->osdScaleDoubleSpinBox->setValue(CoreSettingsGetFloatValue(SettingsID::GUI_OnScreenDisplayScale));
     this->osdMaxMessagesSpinBox->setValue(CoreSettingsGetIntValue(SettingsID::GUI_OnScreenDisplayMaxMessages));
+    this->osdKailleraPortLabelsCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::GUI_OnScreenDisplayKailleraPortLabels));
 
     std::vector<int> backgroundColor = CoreSettingsGetIntListValue(SettingsID::GUI_OnScreenDisplayBackgroundColor);
     std::vector<int> textColor = CoreSettingsGetIntListValue(SettingsID::GUI_OnScreenDisplayTextColor);
@@ -910,6 +914,8 @@ void SettingsDialog::loadInterfaceOSDSettings(void)
         this->currentTextColor = QColor(textColor.at(0), textColor.at(1), textColor.at(2), textColor.at(3));
         this->chooseColor(this->changeTextColorButton, &this->currentTextColor, true);
     }
+
+    this->updateOSDSettingsEnabledState();
 }
 
 void SettingsDialog::loadInterfaceNetplaySettings(void)
@@ -1101,12 +1107,14 @@ void SettingsDialog::loadDefaultInterfaceLogSettings(void)
 void SettingsDialog::loadDefaultInterfaceOSDSettings(void)
 {
     this->osdEnabledCheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::GUI_OnScreenDisplayEnabled));
+    this->osdChatEnabledCheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::GUI_OnScreenDisplayChatEnabled));
     this->osdLocationComboBox->setCurrentIndex(CoreSettingsGetDefaultIntValue(SettingsID::GUI_OnScreenDisplayLocation));
     this->osdVerticalPaddingSpinBox->setValue(CoreSettingsGetDefaultIntValue(SettingsID::GUI_OnScreenDisplayPaddingY));
     this->osdHorizontalPaddingSpinBox->setValue(CoreSettingsGetDefaultIntValue(SettingsID::GUI_OnScreenDisplayPaddingX));
     this->osdDurationSpinBox->setValue(CoreSettingsGetDefaultIntValue(SettingsID::GUI_OnScreenDisplayDuration));
     this->osdScaleDoubleSpinBox->setValue(CoreSettingsGetDefaultFloatValue(SettingsID::GUI_OnScreenDisplayScale));
     this->osdMaxMessagesSpinBox->setValue(CoreSettingsGetDefaultIntValue(SettingsID::GUI_OnScreenDisplayMaxMessages));
+    this->osdKailleraPortLabelsCheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::GUI_OnScreenDisplayKailleraPortLabels));
 
     const std::vector<int> backgroundColor = CoreSettingsGetDefaultIntListValue(SettingsID::GUI_OnScreenDisplayBackgroundColor);
     const std::vector<int> textColor = CoreSettingsGetDefaultIntListValue(SettingsID::GUI_OnScreenDisplayTextColor);
@@ -1121,6 +1129,8 @@ void SettingsDialog::loadDefaultInterfaceOSDSettings(void)
         this->currentTextColor = QColor(textColor.at(0), textColor.at(1), textColor.at(2), textColor.at(3));
         this->chooseColor(this->changeTextColorButton, &this->currentTextColor, true);
     }
+
+    this->updateOSDSettingsEnabledState();
 }
 
 void SettingsDialog::loadDefaultInterfaceNetplaySettings(void)
@@ -1364,12 +1374,14 @@ void SettingsDialog::saveInterfaceLogSettings(void)
 void SettingsDialog::saveInterfaceOSDSettings(void)
 {
     CoreSettingsSetValue(SettingsID::GUI_OnScreenDisplayEnabled, this->osdEnabledCheckBox->isChecked());
+    CoreSettingsSetValue(SettingsID::GUI_OnScreenDisplayChatEnabled, this->osdChatEnabledCheckBox->isChecked());
     CoreSettingsSetValue(SettingsID::GUI_OnScreenDisplayLocation, this->osdLocationComboBox->currentIndex());
     CoreSettingsSetValue(SettingsID::GUI_OnScreenDisplayPaddingY, this->osdVerticalPaddingSpinBox->value());
     CoreSettingsSetValue(SettingsID::GUI_OnScreenDisplayPaddingX, this->osdHorizontalPaddingSpinBox->value());
     CoreSettingsSetValue(SettingsID::GUI_OnScreenDisplayDuration, this->osdDurationSpinBox->value());
     CoreSettingsSetValue(SettingsID::GUI_OnScreenDisplayScale, static_cast<float>(this->osdScaleDoubleSpinBox->value()));
     CoreSettingsSetValue(SettingsID::GUI_OnScreenDisplayMaxMessages, this->osdMaxMessagesSpinBox->value());
+    CoreSettingsSetValue(SettingsID::GUI_OnScreenDisplayKailleraPortLabels, this->osdKailleraPortLabelsCheckBox->isChecked());
     CoreSettingsSetValue(SettingsID::GUI_OnScreenDisplayBackgroundColor, std::vector<int>({ this->currentBackgroundColor.red(),
                                                                                             this->currentBackgroundColor.green(),
                                                                                             this->currentBackgroundColor.blue(),
@@ -1698,6 +1710,17 @@ void SettingsDialog::updateKailleraRecordingCapControls(void)
 
     this->kailleraRecordingCapEnabledCheckBox->setEnabled(recordingByDefault);
     this->kailleraRecordingCapMBSpinBox->setEnabled(recordingByDefault && capEnabled);
+}
+
+void SettingsDialog::updateOSDSettingsEnabledState(void)
+{
+    const bool osdEnabled = this->osdEnabledCheckBox->isChecked();
+    const bool chatEnabled = this->osdChatEnabledCheckBox->isChecked();
+
+    this->osdGlobalSettingsGroupBox->setEnabled(osdEnabled);
+    this->osdChatEnabledCheckBox->setEnabled(osdEnabled);
+    this->osdChatSettingsGroupBox->setEnabled(osdEnabled && chatEnabled);
+    this->osdKailleraPortLabelsCheckBox->setEnabled(osdEnabled);
 }
 
 void SettingsDialog::chooseDirectory(QLineEdit *lineEdit, QString caption)

@@ -9,6 +9,7 @@
  */
 #include "KailleraServerBrowserDialog.hpp"
 #include "KailleraTableStyle.hpp"
+#include "OnScreenDisplay.hpp"
 
 #ifdef NETPLAY
 
@@ -2830,6 +2831,13 @@ void KailleraServerBrowserDialog::onGameStarted(QString game, int player, int nu
             recording_player_names[i][31] = '\0';
         }
     }
+
+    std::array<std::string, 4> playerNames;
+    for (size_t i = 0; i < playerNames.size(); ++i)
+    {
+        playerNames[i] = recording_player_names[i];
+    }
+    OnScreenDisplaySetKailleraPortLabels(numPlayers, playerNames);
 }
 
 void KailleraServerBrowserDialog::onGameEnded()
@@ -2840,6 +2848,7 @@ void KailleraServerBrowserDialog::onGameEnded()
     if (!CoreHasInitKaillera())
         return;
 
+    OnScreenDisplayClearKailleraPortLabels();
     CoreMarkKailleraGameInactive();
     CoreStopEmulation();
 }

@@ -158,6 +158,12 @@ static l_Setting get_setting(SettingsID settingId)
     case SettingsID::GUI_OnScreenDisplayMaxMessages:
         setting = {SETTING_SECTION_GUI, "OnScreenDisplayMaxMessages", 5};
         break;
+    case SettingsID::GUI_OnScreenDisplayChatEnabled:
+        setting = {SETTING_SECTION_GUI, "OnScreenDisplayChatEnabled", true};
+        break;
+    case SettingsID::GUI_OnScreenDisplayKailleraPortLabels:
+        setting = {SETTING_SECTION_GUI, "OnScreenDisplayKailleraPortLabels", false};
+        break;
     case SettingsID::GUI_AutoStartNetplayOnStartup:
         setting = {SETTING_SECTION_GUI, "AutoStartNetplayOnStartup", false};
         break;
@@ -318,6 +324,12 @@ static l_Setting get_setting(SettingsID settingId)
         break;
     case SettingsID::Kaillera_P2PLastGame:
         setting = {SETTING_SECTION_KAILLERA, "P2PLastGame", std::string("")};
+        break;
+    case SettingsID::Kaillera_FfmpegPath:
+        setting = {SETTING_SECTION_KAILLERA, "FfmpegPath", std::string("")};
+        break;
+    case SettingsID::Kaillera_ExportLabelPorts:
+        setting = {SETTING_SECTION_KAILLERA, "ExportLabelPorts", true};
         break;
 
     case SettingsID::Core_GFX_Plugin:
