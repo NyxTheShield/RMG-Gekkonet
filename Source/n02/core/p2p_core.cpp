@@ -5,6 +5,10 @@
 #include "../common/k_framecache.h"
 #include "../errr.h"
 
+#include <cstring>
+#include <cstdio>
+#include <mutex>
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -55,17 +59,79 @@ struct P2PCORESTAT {
 //void __cdecl kprintf(char * arg_0, ...);
 
 bool p2p_core_initialized = false;
+static std::recursive_mutex p2p_transport_mutex;
 
 
 void p2p_send_ssrv_packet(char * cmd, int len, char * host, int port){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	if (p2p_core_initialized){
 		P2PCORE.connection->send_ssrv(cmd, len, host, port);
 	}
 }
 void p2p_send_ssrv_packet(char * cmd, int len, void * sadr){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	if (p2p_core_initialized){
 		P2PCORE.connection->send_ssrv(cmd, len, (sockaddr_in*)sadr);
 	}
+}
+
+static void p2p_poll_raw_socket_locked(){
+	if (!p2p_core_initialized || P2PCORE.connection == 0)
+		return;
+
+	for (int i = 0; i < 256; i++){
+		k_socket::check_sockets(0, 0);
+		if (!P2PCORE.connection->has_data_waiting)
+			break;
+		P2PCORE.connection->poll_raw_socket();
+	}
+}
+
+static void p2p_clear_rollback_packets_locked(bool drain_socket){
+	if (!p2p_core_initialized || P2PCORE.connection == 0)
+		return;
+
+	if (drain_socket)
+		p2p_poll_raw_socket_locked();
+
+	P2PCORE.connection->clear_rollback_packets();
+}
+
+bool p2p_rollback_transport_send(const char *data, int len){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
+	if (!p2p_core_initialized || P2PCORE.connection == 0 || !P2PCORE.CONNECTED)
+		return false;
+	return P2PCORE.connection->send_rollback_packet(data, len);
+}
+
+int p2p_rollback_transport_receive(char *data, int data_len, char *addr, int addr_len){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
+	if (!p2p_core_initialized || P2PCORE.connection == 0 || data == 0 || data_len <= 0)
+		return 0;
+	if (addr != 0 && addr_len > 0)
+		addr[0] = 0;
+
+	p2p_poll_raw_socket_locked();
+
+	int len = data_len;
+	sockaddr_in packet_addr;
+	memset(&packet_addr, 0, sizeof(packet_addr));
+	if (!P2PCORE.connection->receive_rollback_packet(data, &len, &packet_addr))
+		return 0;
+
+	if (addr != 0 && addr_len > 0){
+		const char *ip = inet_ntoa(packet_addr.sin_addr);
+		const int port = ntohs(packet_addr.sin_port);
+		if (ip != 0 && port > 0)
+			snprintf(addr, addr_len, "%s:%i", ip, port);
+	}
+
+	return len;
+}
+
+void p2p_rollback_transport_clear(){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
+	p2p_clear_rollback_packets_locked(true);
 }
 //===========================================================
 //===========================================================
@@ -121,13 +187,16 @@ static void p2p_mark_lobby_ping_alive() {
 }
 
 bool p2p_is_connected(){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	return P2PCORE.status != 0 && P2PCORE.ping != -1 && P2PCORE.connection;
 }
 int p2p_get_frames_count(){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	return P2PCORE.frameno;
 }
 
 bool p2p_core_cleanup(){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	n02_TRACE();//TRACE_TERM();
 	//kprintf(__FILE__ ":%i", __LINE__);
 	if (p2p_core_initialized){
@@ -155,6 +224,7 @@ bool p2p_core_cleanup(){
 
 
 bool p2p_disconnect(){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	n02_TRACE();
 	if (P2PCORE.CONNECTED) {
 		if (P2PCORE.status > 1) {
@@ -174,6 +244,7 @@ bool p2p_disconnect(){
 }
 
 bool p2p_core_initialize(bool host, int port, char * appname, char * gamename, char * username){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	n02_TRACE();//TRACE_INIT();
 
 	p2p_InitializeTime();
@@ -215,10 +286,12 @@ bool p2p_core_initialize(bool host, int port, char * appname, char * gamename, c
 }
 
 int p2p_core_get_port(){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	return P2PCORE.PORT;
 }
 
 bool p2p_core_get_peer_endpoint(char *ip, int ip_len, int *port){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	if (!p2p_core_initialized || P2PCORE.connection == 0 || ip == 0 || ip_len <= 0 || port == 0)
 		return false;
 
@@ -233,6 +306,7 @@ bool p2p_core_get_peer_endpoint(char *ip, int ip_len, int *port){
 }
 
 bool p2p_core_connect(char * ip, int port){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	n02_TRACE();
 	if (ip == NULL)
 		return false;
@@ -295,11 +369,13 @@ void p2p_print_core_status(){
 }
 
 void p2p_retransmit(){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	n02_TRACE();
 	P2PCORE.connection->send_message(P2PCORE.throughput+2);
 }
 
 void p2p_drop_game(){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	n02_TRACE();
 	if (P2PCORE.connection) {
 		P2PCORE.connection->send_tinst(DROP, 0);
@@ -310,6 +386,7 @@ void p2p_drop_game(){
 		// so old pre-game timestamps cannot trigger immediate false timeouts.
 		p2p_mark_lobby_ping_alive();
 		p2p_retransmit();
+		p2p_clear_rollback_packets_locked(false);
 
 		p2p_client_dropped_callback(P2PCORE.PEERNAME, P2PCORE.HOST? 2: 1);
 		p2p_client_dropped_callback(P2PCORE.USERNAME, P2PCORE.HOST? 1: 2);
@@ -321,6 +398,7 @@ void p2p_drop_game(){
 }
 
 void p2p_set_ready(bool bx){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 
 	if (P2PCORE.USERREADY != bx) {
 		P2PCORE.USERREADY = bx;
@@ -333,6 +411,7 @@ void p2p_set_ready(bool bx){
 
 
 void p2p_ping(){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	p2p_instruction kx;
 	kx.inst.type = PING;
 	kx.inst.flags = PING_PING;
@@ -343,6 +422,7 @@ void p2p_ping(){
 }
 
 void p2p_send_chat(char * xxx){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	if (xxx == NULL)
 		xxx = (char*)"";
 
@@ -384,6 +464,78 @@ inline void p2p_handle_chat_instruction(p2p_instruction * ki){
 
 	if (p2p_chat_cache.length>0)
 		P2PCORE.crframeno = p2p_chat_cache.items[0].crframeno;
+}
+
+bool p2p_rollback_process_control(){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
+	if (!p2p_core_initialized || P2PCORE.connection == 0)
+		return false;
+
+	p2p_poll_raw_socket_locked();
+
+	bool ended_game = false;
+	bool processed_instruction = false;
+	for (;;) {
+		p2p_instruction ki;
+		sockaddr_in saddr;
+		if (!P2PCORE.connection->receive_instruction(&ki, false, &saddr))
+			break;
+
+		processed_instruction = true;
+		switch (ki.inst.type) {
+		case CHAT:
+			p2p_handle_chat_instruction(&ki);
+			break;
+		case DROP:
+			p2p_core_debug("peer dropped");
+			P2PCORE.status = 1;
+			P2PCORE.USERREADY = false;
+			P2PCORE.PEERREADY = false;
+			p2p_mark_lobby_ping_alive();
+			p2p_clear_rollback_packets_locked(false);
+			p2p_client_dropped_callback(P2PCORE.PEERNAME, P2PCORE.HOST? 2: 1);
+			p2p_client_dropped_callback(P2PCORE.USERNAME, P2PCORE.HOST? 1: 2);
+			p2p_end_game_callback();
+			ended_game = true;
+			break;
+		case EXIT:
+			p2p_peer_left_callback();
+			P2PCORE.status = P2PCORE.HOST?1:0;
+			P2PCORE.CONNECTED = false;
+			P2PCORE.last_ping_sent_time = 0;
+			P2PCORE.last_ping_echo_time = 0;
+			p2p_clear_rollback_packets_locked(false);
+			p2p_end_game_callback();
+			ended_game = true;
+			break;
+		case PING:
+			if (ki.inst.flags == PING_PING) {
+				ki.inst.flags = PING_ECHO;
+				ki.pos = ki.len;
+				P2PCORE.connection->send_instruction(&ki);
+			} else {
+				P2PCORE.last_ping_echo_time = p2p_GetTime();
+				P2PCORE.ping = p2p_GetTime() - p2p_PING_TIME;
+				p2p_ping_callback(P2PCORE.ping);
+			}
+			break;
+		default:
+			break;
+		}
+
+		if (ended_game)
+			break;
+	}
+
+	if (p2p_chat_cache.length > 0){
+		do {
+			p2p_chatstruct * cma = &p2p_chat_cache.items[0];
+			p2p_chat_callback(cma->local? P2PCORE.USERNAME:P2PCORE.PEERNAME, cma->msg);
+			p2p_chat_cache.removei(0);
+		} while (p2p_chat_cache.length > 0);
+	}
+
+	return ended_game || processed_instruction;
 }
 
 bool p2p_WaitForPeerToLoadOrDie(){
@@ -610,6 +762,7 @@ bool p2p_SynChronizeClocksOrDie(){
 
 
 void p2p_step(){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	n02_TRACE();
 	// Non-blocking poll: Qt timer provides 1ms polling interval.
 	k_socket::check_sockets(0,0);
@@ -890,6 +1043,7 @@ inline bool ProcessGameStuff(){
 }
 
 int p2p_modify_play_values(void *values, int size){
+	std::lock_guard<std::recursive_mutex> lock(p2p_transport_mutex);
 	n02_TRACE();//TRACE
 	if (P2PCORE.status > 1) {
 		//TRACE

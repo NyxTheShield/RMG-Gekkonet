@@ -62,6 +62,9 @@ bool CoreIsEmulationRunning(void);
 // returns whether emulation is paused
 bool CoreIsEmulationPaused(void);
 
+// returns whether synchronized netplay is active
+bool CoreIsSynchronizedNetplayActive(void);
+
 // returns current VI (vertical interrupt) frame count
 // used for synchronization in netplay/Kaillera
 int CoreGetCurrentFrameCount(void);

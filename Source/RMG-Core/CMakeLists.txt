@@ -89,9 +89,10 @@ target_link_libraries(RMG-Core PRIVATE
 # --export-all-symbols forces the linker to export n02 functions from
 # RMG-Core.dll even though CORE_EXPORT (__declspec(dllexport)) triggers
 # selective export mode.
-if (NETPLAY AND WIN32)
+if (TARGET n02)
+    target_compile_definitions(RMG-Core PRIVATE RMGK_HAVE_P2P_TRANSPORT)
     target_link_libraries(RMG-Core PRIVATE n02)
-    target_include_directories(RMG-Core PUBLIC
+    target_include_directories(RMG-Core PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../n02
     )
     target_link_options(RMG-Core PRIVATE -Wl,--export-all-symbols)

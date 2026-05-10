@@ -228,9 +228,9 @@ SettingsDialog::SettingsDialog(QWidget *parent, QString file) : QDialog(parent)
     QWidget* rollbackTab = new QWidget(this->tabWidget);
     QVBoxLayout* rollbackLayout = new QVBoxLayout(rollbackTab);
     this->rollbackVerboseStatsCheckBox = new QCheckBox("Enable verbose rollback stats messaging", rollbackTab);
-    this->rollbackHideMenuCheckBox = new QCheckBox("Hide rollback top menu", rollbackTab);
+    this->rollbackEnableLocalTestingCheckBox = new QCheckBox("Use rollback engine for local play", rollbackTab);
     rollbackLayout->addWidget(this->rollbackVerboseStatsCheckBox);
-    rollbackLayout->addWidget(this->rollbackHideMenuCheckBox);
+    rollbackLayout->addWidget(this->rollbackEnableLocalTestingCheckBox);
     rollbackLayout->addStretch();
     this->tabWidget->addTab(rollbackTab, "Rollback");
 
@@ -950,7 +950,7 @@ void SettingsDialog::loadInterfaceNetplaySettings(void)
 void SettingsDialog::loadRollbackSettings(void)
 {
     this->rollbackVerboseStatsCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::Rollback_VerboseStats));
-    this->rollbackHideMenuCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::Rollback_HideMenu));
+    this->rollbackEnableLocalTestingCheckBox->setChecked(CoreSettingsGetBoolValue(SettingsID::Rollback_EnableLocalTesting));
 }
 
 void SettingsDialog::loadDefaultCoreSettings(void)
@@ -1158,7 +1158,7 @@ void SettingsDialog::loadDefaultInterfaceNetplaySettings(void)
 void SettingsDialog::loadDefaultRollbackSettings(void)
 {
     this->rollbackVerboseStatsCheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::Rollback_VerboseStats));
-    this->rollbackHideMenuCheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::Rollback_HideMenu));
+    this->rollbackEnableLocalTestingCheckBox->setChecked(CoreSettingsGetDefaultBoolValue(SettingsID::Rollback_EnableLocalTesting));
 }
 
 void SettingsDialog::saveSettings(void)
@@ -1424,7 +1424,7 @@ void SettingsDialog::saveInterfaceNetplaySettings(void)
 void SettingsDialog::saveRollbackSettings(void)
 {
     CoreSettingsSetValue(SettingsID::Rollback_VerboseStats, this->rollbackVerboseStatsCheckBox->isChecked());
-    CoreSettingsSetValue(SettingsID::Rollback_HideMenu, this->rollbackHideMenuCheckBox->isChecked());
+    CoreSettingsSetValue(SettingsID::Rollback_EnableLocalTesting, this->rollbackEnableLocalTestingCheckBox->isChecked());
 }
 
 void SettingsDialog::commonHotkeySettings(SettingsDialogAction action)

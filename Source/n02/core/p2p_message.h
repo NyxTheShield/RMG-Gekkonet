@@ -10,6 +10,11 @@
 #include "p2p_instruction.h"
 #include "../stats.h"
 
+#include <deque>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
+
 #define ICACHESIZE 32
 
 #pragma pack(push, 1)
@@ -39,17 +44,141 @@ class p2p_message : public k_socket {
 	unsigned char      last_cached_instruction;
 	oslist<p2p_instruction_ptr, ICACHESIZE> out_cache;
 	oslist<p2p_instruction_ptr, ICACHESIZE> in_cache;
+	struct rollback_packet {
+		std::vector<char> data;
+		sockaddr_in addr;
+	};
+
+	std::deque<rollback_packet> rollback_cache;
+	sockaddr_in      last_packet_addr;
+
+	bool is_peer_packet(const sockaddr_in& packet_addr) const {
+		return addr.sin_addr.s_addr != 0 &&
+			addr.sin_port != 0 &&
+			packet_addr.sin_addr.s_addr == addr.sin_addr.s_addr &&
+			packet_addr.sin_port == addr.sin_port;
+	}
+
+	bool is_rollback_packet(const char* buf, int len) const {
+		static const char prefix[] = { (char)0xff, 'R', 'M', 'G', 'K', 'R', 'B', '1' };
+		return len >= (int)sizeof(prefix) && memcmp(buf, prefix, sizeof(prefix)) == 0;
+	}
+
+	void queue_rollback_packet(const char* buf, int len, const sockaddr_in& packet_addr) {
+		static const int prefix_len = 8;
+		if (len <= prefix_len)
+			return;
+		rollback_packet packet;
+		packet.data.assign(buf + prefix_len, buf + len);
+		packet.addr = packet_addr;
+		rollback_cache.push_back(packet);
+	}
+
+	bool ingest_raw_packet(bool peer_only) {
+		if (!has_data_waiting)
+			return false;
+
+		sockaddr_in packet_addr;
+		char buff[2024];
+		int bufflen = 2024;
+		if (!k_socket::check_recv(buff, &bufflen, false, &packet_addr))
+			return false;
+		last_packet_addr = packet_addr;
+
+		if (is_rollback_packet(buff, bufflen)) {
+			if (is_peer_packet(packet_addr))
+				queue_rollback_packet(buff, bufflen, packet_addr);
+			return true;
+		}
+
+		if (peer_only && !is_peer_packet(packet_addr))
+			return true;
+
+		unsigned char instruction_count = *buff;
+		char* ptr = buff + 1;
+		const char* end = buff + bufflen;
+		if (instruction_count > 0 && instruction_count < 15 && ptr < end) {
+			if (!peer_only &&
+				addr.sin_addr.s_addr != 0 &&
+				addr.sin_port != 0 &&
+				(packet_addr.sin_addr.s_addr != addr.sin_addr.s_addr || packet_addr.sin_port != addr.sin_port))
+				return true;
+			if ((size_t)(end - ptr) < sizeof(p2p_instruction_head))
+				return true;
+			unsigned char latest_serial = *ptr;
+			int si = in_cache.size();
+			unsigned char tx = latest_serial-last_cached_instruction;
+			if (tx > 0 && tx < 15) {
+				if (si < 0 || si > ICACHESIZE) {
+					in_cache.clear();
+					si = 0;
+				}
+				if (si + (int)tx > ICACHESIZE) {
+					in_cache.clear();
+					si = 0;
+				}
+				in_cache.set_size(si+tx);
+				for (int i = si; i < si + (int)tx; i++) {
+					in_cache.items[i].head.serial = 0;
+					in_cache.items[i].head.length = 0;
+				}
+				for (int u=0; u<instruction_count; u++) {
+					if ((size_t)(end - ptr) < sizeof(p2p_instruction_head))
+						break;
+					unsigned char serial = ((p2p_instruction_head*)ptr)->serial;
+					unsigned char length = ((p2p_instruction_head*)ptr)->length;
+					ptr += sizeof(p2p_instruction_head);
+					if (serial == last_cached_instruction)
+						break;
+					if ((size_t)(end - ptr) < (size_t)length)
+						break;
+					unsigned char cix = serial - last_cached_instruction;
+					if (cix == 0 || cix > tx) {
+						ptr += length;
+						continue;
+					}
+					PACKETLOSSCOUNT += cix - 1;
+					int ind = si + (cix) - 1;
+					if (ind < 0 || ind >= ICACHESIZE) {
+						ptr += length;
+						continue;
+					}
+					in_cache.items[ind].head.serial = serial;
+					in_cache.items[ind].head.length = length;
+					memcpy(in_cache.items[ind].body, ptr, length);
+					ptr += length;
+				}
+				last_cached_instruction = latest_serial;
+			} else if (tx==0) SOCK_RECV_RETR++; else PACKETMISOTDERCOUNT++;
+		} else {
+			if (instruction_count == 0 && bufflen > 5) {
+				const int payload_len = bufflen - 1;
+				if (payload_len > 0) {
+					const size_t alloc_size = 2 + sizeof(sockaddr_in) + (size_t)payload_len;
+					char* inb = (char*)malloc(alloc_size);
+					if (inb) {
+						*((short*)inb) = (short)payload_len;
+						*((struct sockaddr_in*)(inb + 2)) = packet_addr;
+						memcpy(inb + 2 + sizeof(sockaddr_in), buff + 1, payload_len);
+						ssrv_cache.add(inb);
+					}
+				}
+			}
+		}
+		return true;
+	}
 public:
 	odlist<char*, 1>	ssrv_cache;
 	int                 default_ipm;
 	int                 dsc;
     p2p_message(){
         k_socket();
-        last_sent_instruction = 0;
+		last_sent_instruction = 0;
         last_processed_instruction = 0;
 		last_cached_instruction = -1;
         default_ipm = 3;
 		dsc = 0;
+		memset(&last_packet_addr, 0, sizeof(last_packet_addr));
     }
 
     void send_instruction(p2p_instruction * arg_0){
@@ -183,67 +312,8 @@ public:
 
 		bool check_recvx (char* buf, int * len){
 	        if (has_data_waiting) {
-				sockaddr_in addrp;
-	            char buff      [2024];
-	            int  bufflen = 2024;
-	            if (k_socket::check_recv(buff, &bufflen, false, &addrp) &&
-					(addrp.sin_addr.s_addr == addr.sin_addr.s_addr) &&
-					(addrp.sin_port == addr.sin_port)) {
-	                unsigned char instruction_count = *buff;
-	                char* ptr = buff + 1;
-					const char* end = buff + bufflen;
-	                if (instruction_count > 0 && instruction_count < 15 && ptr < end) {
-						if ((size_t)(end - ptr) < sizeof(p2p_instruction_head))
-							goto recvx_done;
-						unsigned char latest_serial = *ptr;
-						int si = in_cache.size();
-						unsigned char tx = latest_serial-last_cached_instruction;
-	                    if (tx > 0 && tx < 15) {
-							if (si < 0 || si > ICACHESIZE) {
-								in_cache.clear();
-								si = 0;
-							}
-							if (si + (int)tx > ICACHESIZE) {
-								in_cache.clear();
-								si = 0;
-							}
-	    					in_cache.set_size(si+tx);
-							for (int i = si; i < si + (int)tx; i++) {
-								in_cache.items[i].head.serial = 0;
-								in_cache.items[i].head.length = 0;
-							}
-	                        for (int u=0; u<instruction_count; u++) {
-								if ((size_t)(end - ptr) < sizeof(p2p_instruction_head))
-									break;
-	    						unsigned char serial = ((p2p_instruction_head*)ptr)->serial;
-	                            unsigned char length = ((p2p_instruction_head*)ptr)->length;
-	    						ptr += sizeof(p2p_instruction_head);
-	                            if (serial == last_cached_instruction)
-	                                break;
-								if ((size_t)(end - ptr) < (size_t)length)
-									break;
-	    						unsigned char cix = serial - last_cached_instruction;
-								if (cix == 0 || cix > tx) {
-									ptr += length;
-									continue;
-								}
-	    						PACKETLOSSCOUNT += cix - 1;
-	    						int ind = si + (cix) - 1;
-								if (ind < 0 || ind >= ICACHESIZE) {
-									ptr += length;
-									continue;
-								}
-	    						in_cache.items[ind].head.serial = serial;
-	    						in_cache.items[ind].head.length = length;
-	                            memcpy(in_cache.items[ind].body, ptr, length);
-	                            ptr += length;
-	                        }
-	    					last_cached_instruction = latest_serial;
-	                    } else if (tx==0) SOCK_RECV_RETR++; else PACKETMISOTDERCOUNT++;
-	                }
-	            }
+				ingest_raw_packet(true);
 	        }
-recvx_done:
 	        if (in_cache.size() > 0) {
 				if (*len <= 0)
 					return false;
@@ -259,89 +329,8 @@ recvx_done:
     }
 
 	    bool check_recv (char* buf, int * len, bool leave_in_queue, sockaddr_in* addrp){
-	        if (has_data_waiting) {
-	            char buff      [2024];
-	            int  bufflen = 2024;
-	            if (k_socket::check_recv(buff, &bufflen, false, addrp)) {
-	                unsigned char instruction_count = *buff;
-	                char* ptr = buff + 1;
-					const char* end = buff + bufflen;
-	                if (instruction_count > 0 && instruction_count < 15 && ptr < end) {
-							// Ignore spoofed/unexpected game packets (P2P is not authenticated).
-							// But: during initial connect/handshake (especially host-side), `addr` may not be set yet.
-							if (addrp != NULL &&
-								addr.sin_addr.s_addr != 0 &&
-								addr.sin_port != 0 &&
-								(addrp->sin_addr.s_addr != addr.sin_addr.s_addr || addrp->sin_port != addr.sin_port))
-								goto recv_done;
-						if ((size_t)(end - ptr) < sizeof(p2p_instruction_head))
-							goto recv_done;
-						unsigned char latest_serial = *ptr;
-						int si = in_cache.size();
-						unsigned char tx = latest_serial-last_cached_instruction;
-	                    if (tx > 0 && tx < 15) {
-							if (si < 0 || si > ICACHESIZE) {
-								in_cache.clear();
-								si = 0;
-							}
-							if (si + (int)tx > ICACHESIZE) {
-								in_cache.clear();
-								si = 0;
-							}
-	    					in_cache.set_size(si+tx);
-							for (int i = si; i < si + (int)tx; i++) {
-								in_cache.items[i].head.serial = 0;
-								in_cache.items[i].head.length = 0;
-							}
-	                        for (int u=0; u<instruction_count; u++) {
-								if ((size_t)(end - ptr) < sizeof(p2p_instruction_head))
-									break;
-	    						unsigned char serial = ((p2p_instruction_head*)ptr)->serial;
-	                            unsigned char length = ((p2p_instruction_head*)ptr)->length;
-	    						ptr += sizeof(p2p_instruction_head);
-	                            if (serial == last_cached_instruction)
-	                                break;
-								if ((size_t)(end - ptr) < (size_t)length)
-									break;
-	    						unsigned char cix = serial - last_cached_instruction;
-								if (cix == 0 || cix > tx) {
-									ptr += length;
-									continue;
-								}
-	    						PACKETLOSSCOUNT += cix - 1;
-	    						int ind = si + (cix) - 1;
-								if (ind < 0 || ind >= ICACHESIZE) {
-									ptr += length;
-									continue;
-								}
-	    						in_cache.items[ind].head.serial = serial;
-	    						in_cache.items[ind].head.length = length;
-	                            memcpy(in_cache.items[ind].body, ptr, length);
-	                            ptr += length;
-	                        }
-	    					last_cached_instruction = latest_serial;
-	                    } else if (tx==0) SOCK_RECV_RETR++; else PACKETMISOTDERCOUNT++;
-	                } else {
-						if (instruction_count == 0 && bufflen > 5) {
-							const int payload_len = bufflen - 1;
-							if (payload_len > 0) {
-								const size_t alloc_size = 2 + sizeof(sockaddr_in) + (size_t)payload_len;
-								char* inb = (char*)malloc(alloc_size);
-								if (inb) {
-									*((short*)inb) = (short)payload_len;
-									if (addrp)
-										*((struct sockaddr_in*)(inb + 2)) = *addrp;
-									else
-										memset(inb + 2, 0, sizeof(sockaddr_in));
-									memcpy(inb + 2 + sizeof(sockaddr_in), buff + 1, payload_len);
-									ssrv_cache.add(inb);
-								}
-							}
-						}
-					}
-	            }
-	        }
-recv_done:
+	        if (has_data_waiting)
+				ingest_raw_packet(false);
 	        if (in_cache.size() > 0) {
 				if (*len <= 0)
 					return false;
@@ -349,6 +338,8 @@ recv_done:
 					return false;
 				*len = in_cache[0].head.length;
 				memcpy(buf, in_cache[0].body, *len);
+				if (addrp != NULL)
+					*addrp = last_packet_addr;
 				if(!leave_in_queue) {
 					last_processed_instruction = in_cache[0].head.serial;
 					in_cache.removei(0);
@@ -368,4 +359,38 @@ recv_done:
     void resend_message(int limit){
         send_message(limit);
     }
+
+	bool send_rollback_packet(const char* data, int len) {
+		static const char prefix[] = { (char)0xff, 'R', 'M', 'G', 'K', 'R', 'B', '1' };
+		if (data == NULL || len <= 0 || len > 2000)
+			return false;
+		char buf[2024];
+		if ((int)sizeof(prefix) + len > (int)sizeof(buf))
+			return false;
+		memcpy(buf, prefix, sizeof(prefix));
+		memcpy(buf + sizeof(prefix), data, len);
+		return k_socket::send(buf, (int)sizeof(prefix) + len);
+	}
+
+	bool poll_raw_socket() {
+		return ingest_raw_packet(false);
+	}
+
+	bool receive_rollback_packet(char* data, int* len, sockaddr_in* addrp) {
+		if (data == NULL || len == NULL || *len <= 0 || rollback_cache.empty())
+			return false;
+		const rollback_packet& packet = rollback_cache.front();
+		if ((int)packet.data.size() > *len)
+			return false;
+		*len = (int)packet.data.size();
+		memcpy(data, packet.data.data(), packet.data.size());
+		if (addrp != NULL)
+			*addrp = packet.addr;
+		rollback_cache.pop_front();
+		return true;
+	}
+
+	void clear_rollback_packets() {
+		rollback_cache.clear();
+	}
 };

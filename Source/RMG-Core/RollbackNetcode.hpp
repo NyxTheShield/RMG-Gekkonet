@@ -144,6 +144,7 @@ void CoreRollbackFreeGameState(CoreRollbackState& state);
 bool CoreRollbackAdvanceFrame(void);
 bool CoreRollbackSampleInput(void* values, int size, int players);
 bool CoreRollbackSetInputCallback(CoreRollbackInputCallback callback);
+bool CoreRollbackSetInputPlayers(int players);
 bool CoreRollbackSetDeterministic(bool enabled);
 bool CoreRollbackSetVerboseStats(bool enabled);
 bool CoreRollbackSetTimesyncScale(double scale);

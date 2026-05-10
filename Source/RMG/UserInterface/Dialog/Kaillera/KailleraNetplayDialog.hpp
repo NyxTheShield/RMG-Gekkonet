@@ -29,6 +29,8 @@
 
 #include <future>
 
+class KailleraP2PDialog;
+
 struct ServerEntry {
     QString name;
     QString host; // "ip:port"
@@ -71,10 +73,6 @@ private slots:
     void onCopyP2PCode();
     void onConfigureP2PCode();
 
-    // Rollback tab
-    void onRollbackHost();
-    void onRollbackJoin();
-
     // Network replies
     void onWaitingGamesReply(QNetworkReply* reply);
 
@@ -85,7 +83,6 @@ private:
     void setupUI();
     QWidget* createServerTab();
     QWidget* createP2PTab();
-    QWidget* createRollbackTab();
 
     void loadServerList();
     void saveServerList();
@@ -126,6 +123,7 @@ private:
     void cancelPendingP2PAutoClaim();
     QString currentP2PStaticCode() const;
     QString currentP2PStaticCodeOwnerToken() const;
+    void connectRollbackSessionLaunch(KailleraP2PDialog& p2pDialog, bool& rollbackLaunched);
 
     // State machine timer (replaces blocking KSSDFA loop)
     QTimer* m_stateMachineTimer = nullptr;
@@ -159,12 +157,6 @@ private:
     QPushButton* m_btnP2PJoin = nullptr;
     QListWidget* m_p2pStoredList = nullptr;
     QPushButton* m_btnP2PWaitingGames = nullptr;
-
-    // Rollback host/connect controls
-    QComboBox* m_rollbackGameCombo = nullptr;
-    QLineEdit* m_rollbackHostEdit = nullptr;
-    QPushButton* m_btnRollbackHost = nullptr;
-    QPushButton* m_btnRollbackJoin = nullptr;
 
     struct P2PStoredEntry {
         QString name;

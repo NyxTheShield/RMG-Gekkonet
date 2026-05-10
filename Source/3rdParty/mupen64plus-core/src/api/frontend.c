@@ -432,6 +432,9 @@ EXPORT m64p_error CALL CoreDoCommand(m64p_command Command, int ParamInt, void *P
         case M64CMD_ROLLBACK_SET_INPUT_CALLBACK:
             pif_set_rollback_input_callback((m64p_rollback_input_callback)ParamPtr);
             return M64ERR_SUCCESS;
+        case M64CMD_ROLLBACK_SET_INPUT_PLAYERS:
+            pif_set_rollback_input_players(ParamInt);
+            return M64ERR_SUCCESS;
         case M64CMD_ROLLBACK_SET_DETERMINISTIC:
             g_dev.r4300.randomize_interrupt = ParamInt ? 0 : ConfigGetParamBool(g_CoreConfig, "RandomizeInterrupt");
             return M64ERR_SUCCESS;

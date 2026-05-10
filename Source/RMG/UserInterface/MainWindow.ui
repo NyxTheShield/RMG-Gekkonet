@@ -157,7 +157,7 @@
    </widget>
    <widget class="QMenu" name="menuRollback">
     <property name="title">
-     <string>Rollback</string>
+     <string>Debug</string>
     </property>
     <addaction name="action_Rollback_SaveState"/>
     <addaction name="action_Rollback_LoadState"/>

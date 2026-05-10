@@ -1,7 +1,32 @@
 #include "backend.h"
 
 #include <cassert>
+#include <atomic>
+#include <chrono>
 #include <climits>
+#include <cstdint>
+
+namespace
+{
+    u16 GenerateSessionMagic()
+    {
+        static std::atomic<unsigned int> counter{1};
+
+        const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+        const unsigned int sequence = counter.fetch_add(1, std::memory_order_relaxed);
+        std::uintptr_t stack_addr = reinterpret_cast<std::uintptr_t>(&sequence);
+
+        std::uint64_t mixed = static_cast<std::uint64_t>(now);
+        mixed ^= static_cast<std::uint64_t>(sequence) * 0x9e3779b97f4a7c15ull;
+        mixed ^= static_cast<std::uint64_t>(stack_addr);
+        mixed ^= mixed >> 33;
+        mixed *= 0xff51afd7ed558ccdull;
+        mixed ^= mixed >> 33;
+
+        u16 magic = static_cast<u16>((mixed ^ (mixed >> 16) ^ (mixed >> 32) ^ (mixed >> 48)) & 0xffffu);
+        return magic == 0 ? 1 : magic;
+    }
+}
 
 // register poly types.
 namespace
@@ -19,11 +44,9 @@ Gekko::MessageSystem::MessageSystem()
 {
     _num_players = 0;
 	_input_size = 0;
-    _last_sent_network_check = 0;
+	_last_sent_network_check = 0;
 
-	// gen magic for session
-	std::srand((unsigned int)std::time(nullptr));
-	_session_magic = std::rand();
+	_session_magic = GenerateSessionMagic();
 
     session_events = SessionEventSystem();
 }
@@ -49,18 +72,18 @@ void Gekko::MessageSystem::NetInputQueue::TrimToAck(Frame min_ack, u32 max_size)
 {
     if (inputs.empty()) return;
 
-    // compute target size from ack
-    u32 target = (u32)inputs.size();
     if (min_ack != INT_MAX) {
-        Frame oldest = last_added_input - (Frame)inputs.size() + 1;
-        Frame acked = std::max((Frame)0, min_ack - oldest + 1);
-        target = (u32)inputs.size() - std::min((u32)acked, (u32)inputs.size());
+        const Frame oldest = last_added_input - (Frame)inputs.size() + 1;
+        const Frame acked = std::max((Frame)0, min_ack - oldest + 1);
+        const u32 target = (u32)inputs.size() - std::min((u32)acked, (u32)inputs.size());
+
+        while (inputs.size() > target) {
+            inputs.pop_front();
+        }
+        return;
     }
 
-    // apply safety cap
-    target = std::min(target, max_size);
-
-    while (inputs.size() > target) {
+    while (inputs.size() > max_size) {
         inputs.pop_front();
     }
 }
@@ -544,6 +567,11 @@ void Gekko::MessageSystem::OnSyncRequest(NetAddress& addr, NetPacket& pkt)
 
         for (auto& player : *current) {
             if (player->address.Equals(addr)) {
+                if (player->GetStatus() == Connected) {
+                    should_send++;
+                    continue;
+                }
+
                 player->session_magic = body->rng_data;
                 if (player->sync_num == 0) {
                     player->stats.last_sent_sync_message = now;
@@ -806,6 +834,8 @@ void Gekko::MessageSystem::SendInputsToPeer(Player* peer, GekkoNetAdapter* host,
     // cache miss: rebuild packets for this peer
     const Frame peer_start_frame = std::max(peer->stats.last_acked_frame + 1, queue_oldest_frame);
     const u32 peer_start_idx = (u32)(peer_start_frame - queue_oldest_frame);
+    if (peer_start_idx >= q_size) return;
+
     const u32 peer_input_count = q_size - peer_start_idx;
 
     if (peer_input_count == 0) return;
@@ -913,4 +943,3 @@ void Gekko::AdvantageHistory::SetLocalAdvantage(i8 adv) {
 void Gekko::AdvantageHistory::SetRemoteAdvantage(i8 adv) {
     _remote_frame_adv = adv;
 }
-

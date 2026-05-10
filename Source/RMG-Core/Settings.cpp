@@ -324,8 +324,8 @@ static l_Setting get_setting(SettingsID settingId)
     case SettingsID::Rollback_VerboseStats:
         setting = {SETTING_SECTION_ROLLBACK, "VerboseStats", false};
         break;
-    case SettingsID::Rollback_HideMenu:
-        setting = {SETTING_SECTION_ROLLBACK, "HideMenu", false};
+    case SettingsID::Rollback_EnableLocalTesting:
+        setting = {SETTING_SECTION_ROLLBACK, "EnableLocalTesting", true};
         break;
 
     case SettingsID::Core_GFX_Plugin:

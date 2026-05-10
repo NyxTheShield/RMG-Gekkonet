@@ -91,6 +91,7 @@ void process_pif_ram(struct pif* pif);
 void update_pif_ram(struct pif* pif);
 void pif_begin_rollback_input_frame(void);
 void pif_set_rollback_input_callback(m64p_rollback_input_callback callback);
+void pif_set_rollback_input_players(int players);
 
 void hw2_int_handler(void* opaque);
 

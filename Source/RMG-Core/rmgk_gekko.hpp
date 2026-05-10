@@ -26,6 +26,7 @@ class rmgk_gekko
     static bool start_local_session(const char* gameName, int players, int inputSize, int localDelay);
     static void close_session();
     static void request_stop();
+    static bool is_netplay_session_active();
     static bool execute();
     static bool set_deterministic(bool enabled);
     static bool install_core_input_callback();

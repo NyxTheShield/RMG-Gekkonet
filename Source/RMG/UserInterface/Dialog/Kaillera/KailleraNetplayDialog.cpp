@@ -1525,8 +1525,7 @@ void KailleraNetplayDialog::setupUI()
         launcherTabBar->setModernMode(theme == "Modern");
     }
     m_tabWidget->addTab(createServerTab(), "Server");
-    m_tabWidget->addTab(createP2PTab(), "Peer to Peer");
-    m_tabWidget->addTab(createRollbackTab(), "Rollback");
+    m_tabWidget->addTab(createP2PTab(), "Peer to Peer (rollback)");
     connect(m_tabWidget, &QTabWidget::currentChanged, this, &KailleraNetplayDialog::onTabChanged);
     mainLayout->addWidget(m_tabWidget, 1);
 }
@@ -1915,132 +1914,6 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     layout->addWidget(connectPane, 1);
 
     refreshP2PStaticCodeDisplay();
-
-    return tab;
-}
-
-QWidget* KailleraNetplayDialog::createRollbackTab()
-{
-    auto* tab = new QWidget();
-    auto* layout = new QVBoxLayout(tab);
-    layout->setContentsMargins(12, 12, 12, 12);
-    layout->setSpacing(10);
-
-    const QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
-
-    QVBoxLayout* hostLayout = nullptr;
-    auto* hostPane = createLauncherSectionPane(theme, tab, "Host Rollback Session", &hostLayout);
-    auto* hostBody = new QWidget(hostPane);
-    auto* hostBodyLayout = new QVBoxLayout(hostBody);
-    hostBodyLayout->setContentsMargins(0, 0, 0, 0);
-    hostBodyLayout->setSpacing(10);
-
-    auto* gameLayout = new QHBoxLayout();
-    auto* gameLabel = new QLabel("ROM:", hostBody);
-    gameLabel->setObjectName("KailleraFieldLabel");
-    gameLayout->addWidget(gameLabel);
-    m_rollbackGameCombo = new SearchableComboBox(hostBody);
-    m_rollbackGameCombo->setObjectName("KailleraInputCombo");
-    configureLauncherComboMetrics(m_rollbackGameCombo);
-    configureLauncherComboPopup(m_rollbackGameCombo, theme);
-    if (theme != "Modern")
-    {
-        static_cast<SearchableComboBox*>(m_rollbackGameCombo)->setDisplayTextInset(4);
-    }
-    m_rollbackGameCombo->setToolTip("Choose the ROM to host with GekkoNet rollback");
-    gameLayout->addWidget(m_rollbackGameCombo, 1);
-    hostBodyLayout->addLayout(gameLayout);
-
-    QStringList gameNames;
-    if (infos.gameList)
-    {
-        const char* p = infos.gameList;
-        while (*p)
-        {
-            gameNames.append(QString::fromUtf8(p));
-            p += strlen(p) + 1;
-        }
-    }
-    std::sort(gameNames.begin(), gameNames.end(), [](const QString& a, const QString& b) {
-        return QString::localeAwareCompare(a, b) < 0;
-    });
-    m_rollbackGameCombo->addItems(gameNames);
-
-    auto* hostOptionsLayout = new QHBoxLayout();
-    hostOptionsLayout->setContentsMargins(0, 0, 0, 0);
-    hostOptionsLayout->setSpacing(8);
-    hostOptionsLayout->addStretch();
-
-    m_btnRollbackHost = new QPushButton("Host Rollback Session", hostBody);
-    m_btnRollbackHost->setObjectName("KailleraPrimaryButton");
-    configureLauncherButtonMetrics(m_btnRollbackHost);
-    configureLauncherAccentPalette(m_btnRollbackHost);
-    connect(m_btnRollbackHost, &QPushButton::clicked, this, &KailleraNetplayDialog::onRollbackHost);
-    hostOptionsLayout->addWidget(m_btnRollbackHost);
-    hostBodyLayout->addLayout(hostOptionsLayout);
-
-    auto* hostNote = new QLabel(
-        "Creates a normal P2P room with chat, connect code, NAT traversal, and per-client rollback input delay.",
-        hostBody);
-    hostNote->setWordWrap(true);
-    hostNote->setObjectName("KailleraFieldLabel");
-    hostBodyLayout->addWidget(hostNote);
-    hostLayout->addWidget(hostBody);
-    layout->addWidget(hostPane);
-
-    if (theme != "Modern")
-    {
-        auto* dividerRow = new QWidget(tab);
-        auto* dividerRowLayout = new QVBoxLayout(dividerRow);
-        dividerRowLayout->setContentsMargins(0, 6, 0, 6);
-        dividerRowLayout->setSpacing(0);
-        auto* divider = new QFrame(dividerRow);
-        divider->setObjectName("KailleraDivider");
-        divider->setFrameShape(QFrame::HLine);
-        divider->setFrameShadow(QFrame::Plain);
-        dividerRowLayout->addWidget(divider);
-        layout->addWidget(dividerRow);
-    }
-
-    QVBoxLayout* connectLayout = nullptr;
-    auto* connectPane = createLauncherSectionPane(theme, tab, "Connect to Rollback Session", &connectLayout);
-    auto* connectBody = new QWidget(connectPane);
-    auto* connectBodyLayout = new QVBoxLayout(connectBody);
-    connectBodyLayout->setContentsMargins(0, 0, 0, 0);
-    connectBodyLayout->setSpacing(10);
-
-    auto* addrLayout = new QHBoxLayout();
-    auto* addrLabel = new QLabel("IP/Port:", connectBody);
-    addrLabel->setObjectName("KailleraFieldLabel");
-    addrLayout->addWidget(addrLabel);
-    m_rollbackHostEdit = new QLineEdit(connectBody);
-    m_rollbackHostEdit->setObjectName("KailleraInput");
-    m_rollbackHostEdit->setPlaceholderText("Connect code or ip:port");
-    configureLauncherLineEditMetrics(m_rollbackHostEdit, theme);
-    addrLayout->addWidget(m_rollbackHostEdit, 1);
-    m_btnRollbackJoin = new QPushButton("Connect Rollback Session", connectBody);
-    m_btnRollbackJoin->setObjectName("KailleraPrimaryButton");
-    configureLauncherButtonMetrics(m_btnRollbackJoin);
-    configureLauncherAccentPalette(m_btnRollbackJoin);
-    connect(m_btnRollbackJoin, &QPushButton::clicked, this, &KailleraNetplayDialog::onRollbackJoin);
-    addrLayout->addWidget(m_btnRollbackJoin);
-    connectBodyLayout->addLayout(addrLayout);
-
-    auto* note = new QLabel(
-        "Uses the same P2P room, chat, and connect-code flow as normal peer-to-peer; when the host starts, "
-        "the game launches as GekkoNet rollback.",
-        connectBody);
-    note->setWordWrap(true);
-    note->setObjectName("KailleraFieldLabel");
-    connectBodyLayout->addWidget(note);
-
-    connectLayout->addWidget(connectBody);
-    layout->addWidget(connectPane);
-    layout->addStretch();
-
-    const int labelWidth = qMax(gameLabel->sizeHint().width(), addrLabel->sizeHint().width());
-    gameLabel->setFixedWidth(labelWidth);
-    addrLabel->setFixedWidth(labelWidth);
 
     return tab;
 }
@@ -2887,6 +2760,17 @@ QString KailleraNetplayDialog::currentP2PStaticCodeOwnerToken() const
         CoreSettingsGetStringValue(SettingsID::Kaillera_P2PStaticCodeOwnerToken)).trimmed();
 }
 
+void KailleraNetplayDialog::connectRollbackSessionLaunch(KailleraP2PDialog& p2pDialog, bool& rollbackLaunched)
+{
+    connect(&p2pDialog, &KailleraP2PDialog::rollbackSessionReady, this,
+        [this, &rollbackLaunched](QString game, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay, int predictionWindow) {
+            rollbackLaunched = true;
+            emit rollbackSessionPreparing();
+            emit rollbackSessionRequested(game, remoteAddress, localPort, remotePort, localPlayer, frameDelay, predictionWindow);
+        },
+        Qt::DirectConnection);
+}
+
 static void releaseOldTraversalReservation(QWidget* parent, const QString& ownerToken)
 {
     if (ownerToken.isEmpty())
@@ -3180,181 +3064,10 @@ void KailleraNetplayDialog::onStateMachineTimer()
 
 void KailleraNetplayDialog::onTabChanged(int index)
 {
-    // Tab order: 0=Server, 1=P2P, 2=Rollback
+    // Tab order: 0=Server, 1=P2P
     // n02 mode: 0=P2P, 1=Server
     int mode = (index == 1) ? 0 : 1;
     n02::activateMode(mode);
-}
-
-void KailleraNetplayDialog::onRollbackHost()
-{
-    QString gameName = (m_rollbackGameCombo != nullptr) ? m_rollbackGameCombo->currentText().trimmed() : QString();
-    if (gameName.isEmpty())
-    {
-        QMessageBox::warning(this, "Rollback Host", "No game selected. Choose a ROM to host.");
-        return;
-    }
-
-    QByteArray usernameBytes = m_usernameEdit->text().toUtf8();
-    if (usernameBytes.isEmpty()) usernameBytes = "Player";
-
-    QByteArray gameBytes = gameName.toUtf8();
-    int port = CoreSettingsGetIntValue(SettingsID::Kaillera_Port);
-    if (port <= 0 || port > 65535) port = 27886;
-
-    if (!p2p_core_initialize(true, port, APP, gameBytes.data(), usernameBytes.data()))
-    {
-        QMessageBox::warning(this, "Rollback Host", "Failed to initialize P2P room.");
-        return;
-    }
-    emit rollbackSessionPreparing();
-
-    const bool stateTimerWasRunning =
-        (m_stateMachineTimer != nullptr && m_stateMachineTimer->isActive());
-    if (stateTimerWasRunning)
-    {
-        m_stateMachineTimer->stop();
-    }
-
-    hide();
-
-    bool rollbackLaunched = false;
-    QString username = QString::fromUtf8(usernameBytes);
-    KailleraP2PDialog p2pDialog(true, gameName, username, QString(), nullptr, true);
-    connect(&p2pDialog, &KailleraP2PDialog::rollbackSessionReady, this,
-        [this, &rollbackLaunched](QString game, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay, int predictionWindow) {
-            if (rollbackLaunched)
-            {
-                return;
-            }
-            rollbackLaunched = true;
-            emit rollbackSessionRequested(game, remoteAddress, localPort, remotePort, localPlayer, frameDelay, predictionWindow);
-        },
-        Qt::DirectConnection);
-    p2pDialog.show();
-
-    QEventLoop loop;
-    connect(&p2pDialog, &QDialog::finished, &loop, &QEventLoop::quit);
-    loop.exec();
-
-    if (stateTimerWasRunning && m_stateMachineTimer != nullptr)
-    {
-        m_stateMachineTimer->start(1);
-    }
-
-    if (rollbackLaunched)
-    {
-        accept();
-        return;
-    }
-
-    show();
-    refreshP2PStaticCodeDisplay();
-}
-
-void KailleraNetplayDialog::onRollbackJoin()
-{
-    QString addrText = (m_rollbackHostEdit != nullptr) ? m_rollbackHostEdit->text().trimmed() : QString();
-    addrText.remove(' ');
-    if (addrText.isEmpty())
-    {
-        QMessageBox::warning(this, "Rollback Connect", "Please enter a connect code or host address (ip:port).");
-        return;
-    }
-
-    QByteArray usernameBytes = m_usernameEdit->text().toUtf8();
-    if (usernameBytes.isEmpty()) usernameBytes = "Player";
-
-    const bool isCode = looksLikeTraversalCode(addrText);
-    const QString normalizedCode = isCode ? normalizeTraversalCode(addrText) : QString();
-
-    if (!p2p_core_initialize(false, 0, APP, (char*)"", usernameBytes.data()))
-    {
-        QMessageBox::warning(this, "Rollback Connect", "Failed to initialize P2P core.");
-        return;
-    }
-
-    const bool stateTimerWasRunning =
-        (m_stateMachineTimer != nullptr && m_stateMachineTimer->isActive());
-    if (stateTimerWasRunning)
-    {
-        m_stateMachineTimer->stop();
-    }
-
-    bool connected = false;
-    if (isCode)
-    {
-        connected = true;
-    }
-    else
-    {
-        QByteArray ipBytes;
-        int port = 27886;
-        int colonIdx = addrText.lastIndexOf(':');
-        if (colonIdx >= 0)
-        {
-            ipBytes = addrText.left(colonIdx).toUtf8();
-            port = addrText.mid(colonIdx + 1).toInt();
-            if (port == 0) port = 27886;
-        }
-        else
-        {
-            ipBytes = addrText.toUtf8();
-        }
-
-        connected = p2p_core_connect(ipBytes.data(), port);
-    }
-
-    if (!connected)
-    {
-        p2p_core_cleanup();
-        if (stateTimerWasRunning && m_stateMachineTimer != nullptr)
-        {
-            m_stateMachineTimer->start(1);
-        }
-        QMessageBox::warning(this, "Rollback Connect", "Failed to connect to host: " + addrText);
-        return;
-    }
-    emit rollbackSessionPreparing();
-
-    hide();
-
-    bool rollbackLaunched = false;
-    QString username = QString::fromUtf8(usernameBytes);
-    KailleraP2PDialog p2pDialog(false, QString(), username, isCode ? normalizedCode : QString(), nullptr, true);
-    connect(&p2pDialog, &KailleraP2PDialog::peerNicknameResolved, this,
-        [this, addrText, normalizedCode, isCode](const QString& nickname) {
-            updateP2PStoredNickname(isCode ? normalizedCode : addrText, nickname);
-        },
-        Qt::QueuedConnection);
-    connect(&p2pDialog, &KailleraP2PDialog::rollbackSessionReady, this,
-        [this, &rollbackLaunched](QString game, QString remoteAddress, int localPort, int remotePort, int localPlayer, int frameDelay, int predictionWindow) {
-            if (rollbackLaunched)
-            {
-                return;
-            }
-            rollbackLaunched = true;
-            emit rollbackSessionRequested(game, remoteAddress, localPort, remotePort, localPlayer, frameDelay, predictionWindow);
-        },
-        Qt::DirectConnection);
-    p2pDialog.show();
-
-    QEventLoop loop;
-    connect(&p2pDialog, &QDialog::finished, &loop, &QEventLoop::quit);
-    loop.exec();
-
-    if (stateTimerWasRunning && m_stateMachineTimer != nullptr)
-    {
-        m_stateMachineTimer->start(1);
-    }
-
-    if (rollbackLaunched)
-    {
-        accept();
-        return;
-    }
-
-    show();
 }
 
 void KailleraNetplayDialog::onConfigureP2PCode()
@@ -4151,8 +3864,10 @@ void KailleraNetplayDialog::onP2PHost()
 
         hide();
 
+        bool rollbackLaunched = false;
         QString username = QString::fromUtf8(usernameBytes);
         KailleraP2PDialog p2pDialog(true, gameName, username, QString(), nullptr);
+        connectRollbackSessionLaunch(p2pDialog, rollbackLaunched);
         p2pDialog.show();
 
         QEventLoop loop;
@@ -4162,6 +3877,12 @@ void KailleraNetplayDialog::onP2PHost()
         if (stateTimerWasRunning && m_stateMachineTimer != nullptr)
         {
             m_stateMachineTimer->start(1);
+        }
+
+        if (rollbackLaunched)
+        {
+            accept();
+            return;
         }
 
         show();
@@ -4314,6 +4035,8 @@ void KailleraNetplayDialog::onP2PJoin()
                         updateP2PStoredNickname(normalizedCode, nickname);
                     },
                     Qt::QueuedConnection);
+            bool rollbackLaunched = false;
+            connectRollbackSessionLaunch(p2pDialog, rollbackLaunched);
             p2pDialog.show();
 
             QEventLoop loop;
@@ -4323,6 +4046,12 @@ void KailleraNetplayDialog::onP2PJoin()
             if (stateTimerWasRunning && m_stateMachineTimer != nullptr)
             {
                 m_stateMachineTimer->start(1);
+            }
+
+            if (rollbackLaunched)
+            {
+                accept();
+                return;
             }
 
             show();
@@ -4355,6 +4084,8 @@ void KailleraNetplayDialog::onP2PJoin()
                             updateP2PStoredNickname(addrText, nickname);
                         },
                         Qt::QueuedConnection);
+                bool rollbackLaunched = false;
+                connectRollbackSessionLaunch(p2pDialog, rollbackLaunched);
                 p2pDialog.show();
 
                 QEventLoop loop;
@@ -4364,6 +4095,12 @@ void KailleraNetplayDialog::onP2PJoin()
                 if (stateTimerWasRunning && m_stateMachineTimer != nullptr)
                 {
                     m_stateMachineTimer->start(1);
+                }
+
+                if (rollbackLaunched)
+                {
+                    accept();
+                    return;
                 }
 
                 show();

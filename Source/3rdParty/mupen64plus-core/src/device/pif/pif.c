@@ -68,6 +68,7 @@ enum { ROLLBACK_INPUT_PLAYERS = 4 };
 static m64p_rollback_input_callback l_rollback_input_callback = NULL;
 static uint32_t l_rollback_input_values[ROLLBACK_INPUT_PLAYERS];
 static int l_rollback_input_valid = 0;
+static int l_rollback_input_players = 0;
 
 static uint32_t rollback_read_controller_input(const uint8_t* rx_buf)
 {
@@ -130,6 +131,22 @@ void pif_set_rollback_input_callback(m64p_rollback_input_callback callback)
 {
     l_rollback_input_callback = callback;
     l_rollback_input_valid = 0;
+    if (callback == NULL) {
+        l_rollback_input_players = 0;
+    }
+}
+
+void pif_set_rollback_input_players(int players)
+{
+    if (players < 0) {
+        players = 0;
+    }
+    if (players > ROLLBACK_INPUT_PLAYERS) {
+        players = ROLLBACK_INPUT_PLAYERS;
+    }
+
+    l_rollback_input_players = players;
+    l_rollback_input_valid = 0;
 }
 
 static void rollback_sync_input(struct pif* pif)
@@ -142,12 +159,12 @@ static void rollback_sync_input(struct pif* pif)
         return;
     }
 
-    for (k = 0; k < ROLLBACK_INPUT_PLAYERS && k < PIF_CHANNELS_COUNT; ++k) {
+    for (k = 0; k < (size_t)l_rollback_input_players && k < PIF_CHANNELS_COUNT; ++k) {
         rollback_force_controller_present(&pif->channels[k]);
     }
 
     if (l_rollback_input_valid) {
-        for (k = 0; k < ROLLBACK_INPUT_PLAYERS && k < PIF_CHANNELS_COUNT; ++k) {
+        for (k = 0; k < (size_t)l_rollback_input_players && k < PIF_CHANNELS_COUNT; ++k) {
             struct pif_channel* channel = &pif->channels[k];
 
             if (rollback_channel_has_command(channel)
@@ -159,7 +176,7 @@ static void rollback_sync_input(struct pif* pif)
         return;
     }
 
-    for (k = 0; k < ROLLBACK_INPUT_PLAYERS && k < PIF_CHANNELS_COUNT; ++k) {
+    for (k = 0; k < (size_t)l_rollback_input_players && k < PIF_CHANNELS_COUNT; ++k) {
         struct pif_channel* channel = &pif->channels[k];
 
         if (rollback_channel_has_command(channel)
@@ -174,14 +191,14 @@ static void rollback_sync_input(struct pif* pif)
         return;
     }
 
-    if (!l_rollback_input_callback(input_values, sizeof(input_values[0]), ROLLBACK_INPUT_PLAYERS)) {
+    if (!l_rollback_input_callback(input_values, sizeof(input_values[0]), l_rollback_input_players)) {
         return;
     }
 
     memcpy(l_rollback_input_values, input_values, sizeof(l_rollback_input_values));
     l_rollback_input_valid = 1;
 
-    for (k = 0; k < ROLLBACK_INPUT_PLAYERS && k < PIF_CHANNELS_COUNT; ++k) {
+    for (k = 0; k < (size_t)l_rollback_input_players && k < PIF_CHANNELS_COUNT; ++k) {
         struct pif_channel* channel = &pif->channels[k];
 
         if (rollback_channel_has_command(channel)

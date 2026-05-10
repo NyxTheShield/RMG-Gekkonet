@@ -16,6 +16,9 @@
 
 #ifdef RMGK_HAVE_GEKKONET
 #include <gekkonet.h>
+#ifdef RMGK_HAVE_P2P_TRANSPORT
+#include "core/p2p_core.h"
+#endif
 #endif
 
 #include <algorithm>
@@ -23,6 +26,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <fstream>
 #include <iomanip>
 #include <mutex>
@@ -65,6 +69,7 @@ int g_GekkoInputSize = 0;
 int g_GekkoLocalPlayer = 0;
 int g_GekkoLocalHandle = -1;
 int g_GekkoRemoteHandle = -1;
+std::vector<int> g_GekkoPlayerHandles;
 std::vector<int> g_GekkoLocalHandles;
 std::vector<unsigned char> g_GekkoLatchedInput;
 bool g_GekkoHasLatchedInput = false;
@@ -84,6 +89,10 @@ std::mutex g_GekkoClientReplayMutex;
 ClientInputReplayMode g_GekkoClientReplayMode = ClientInputReplayMode::Off;
 std::vector<uint32_t> g_GekkoClientReplayInputs;
 size_t g_GekkoClientReplayIndex = 0;
+#ifdef RMGK_HAVE_P2P_TRANSPORT
+std::vector<GekkoNetResult*> g_GekkoP2PAdapterResults;
+std::string g_GekkoP2PRemoteAddress;
+#endif
 long long g_GekkoLastLoadStateUs = 0;
 long long g_GekkoLastSaveStateUs = 0;
 long long g_GekkoLastRunFrameUs = 0;
@@ -158,6 +167,80 @@ void write_gekko_log(const std::string& message)
     std::ofstream file(path, std::ios::out | std::ios::app);
     file << "core_frame=" << CoreGetCurrentFrameCount() << " " << message << "\n";
 }
+
+#ifdef RMGK_HAVE_P2P_TRANSPORT
+void p2p_adapter_send(GekkoNetAddress* addr, const char* data, int length)
+{
+    (void)addr;
+    if (!p2p_rollback_transport_send(data, length) && g_GekkoLogEnabled)
+    {
+        write_gekko_log("p2p_adapter_send result=fail");
+    }
+}
+
+GekkoNetResult** p2p_adapter_receive(int* length)
+{
+    g_GekkoP2PAdapterResults.clear();
+    if (length == nullptr)
+    {
+        return g_GekkoP2PAdapterResults.data();
+    }
+
+    for (;;)
+    {
+        char data[2048];
+        char addr[128];
+        const int dataLen = p2p_rollback_transport_receive(data, static_cast<int>(sizeof(data)), addr, static_cast<int>(sizeof(addr)));
+        if (dataLen <= 0)
+        {
+            break;
+        }
+
+        const char* resultAddr = g_GekkoP2PRemoteAddress.empty() ? addr : g_GekkoP2PRemoteAddress.c_str();
+        const size_t addrLen = std::strlen(resultAddr);
+        if (addrLen == 0)
+        {
+            break;
+        }
+
+        GekkoNetResult* result = reinterpret_cast<GekkoNetResult*>(std::malloc(sizeof(*result)));
+        if (result == nullptr)
+        {
+            break;
+        }
+
+        result->addr.data = std::malloc(addrLen);
+        result->data = std::malloc(static_cast<size_t>(dataLen));
+        if (result->addr.data == nullptr || result->data == nullptr)
+        {
+            std::free(result->addr.data);
+            std::free(result->data);
+            std::free(result);
+            break;
+        }
+
+        result->addr.size = static_cast<unsigned int>(addrLen);
+        std::memcpy(result->addr.data, resultAddr, addrLen);
+        result->data_len = static_cast<unsigned int>(dataLen);
+        std::memcpy(result->data, data, static_cast<size_t>(dataLen));
+        g_GekkoP2PAdapterResults.push_back(result);
+    }
+
+    *length = static_cast<int>(g_GekkoP2PAdapterResults.size());
+    return g_GekkoP2PAdapterResults.data();
+}
+
+void p2p_adapter_free(void* data)
+{
+    std::free(data);
+}
+
+GekkoNetAdapter g_GekkoP2PAdapter{
+    p2p_adapter_send,
+    p2p_adapter_receive,
+    p2p_adapter_free
+};
+#endif
 
 const char* gekko_session_event_name(GekkoSessionEventType type)
 {
@@ -441,7 +524,21 @@ bool latch_gekko_input(const GekkoGameEvent* event)
     {
         g_GekkoLatchedInput.resize(static_cast<size_t>(expectedBytes));
     }
-    std::memcpy(g_GekkoLatchedInput.data(), event->data.adv.inputs, static_cast<size_t>(expectedBytes));
+    std::memset(g_GekkoLatchedInput.data(), 0, static_cast<size_t>(expectedBytes));
+    for (int player = 1; player <= g_GekkoPlayers; player++)
+    {
+        const size_t playerIndex = static_cast<size_t>(player - 1);
+        const int handle = playerIndex < g_GekkoPlayerHandles.size() ? g_GekkoPlayerHandles[playerIndex] : -1;
+        if (handle < 0 || handle >= g_GekkoPlayers)
+        {
+            write_gekko_log("sync_input result=fail reason=handle_map");
+            return false;
+        }
+
+        std::memcpy(g_GekkoLatchedInput.data() + (playerIndex * static_cast<size_t>(g_GekkoInputSize)),
+            event->data.adv.inputs + (handle * g_GekkoInputSize),
+            static_cast<size_t>(g_GekkoInputSize));
+    }
     g_GekkoHasLatchedInput = true;
 
     if (g_GekkoDebugInputProvider != nullptr)
@@ -996,7 +1093,7 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
     g_GekkoStopRequested.store(false, std::memory_order_relaxed);
     reset_gekko_log();
 
-    if (gameName == nullptr || players < 2 || inputSize != static_cast<int>(sizeof(uint32_t)) ||
+    if (gameName == nullptr || players < 2 || players > 4 || inputSize != static_cast<int>(sizeof(uint32_t)) ||
         localPlayer < 1 || localPlayer > players || remoteIp == nullptr || remoteIp[0] == '\0' || remotePort == 0)
     {
         write_gekko_log("start_p2p_session result=fail reason=invalid_params");
@@ -1022,13 +1119,38 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
     config.desync_detection = true;
     config.check_distance = 10;
     gekko_start(g_GekkoSession, &config);
-    gekko_net_adapter_set(g_GekkoSession, gekko_default_adapter(localPort));
+#ifdef RMGK_HAVE_P2P_TRANSPORT
+    p2p_rollback_transport_clear();
+    gekko_net_adapter_set(g_GekkoSession, &g_GekkoP2PAdapter);
+#else
+#ifdef _WIN32
+    CoreSetError("GekkoNet P2P transport is unavailable in this build");
+    close_session();
+    return false;
+#else
+    try
+    {
+        gekko_net_adapter_set(g_GekkoSession, gekko_default_adapter(localPort));
+    }
+    catch (const std::exception& e)
+    {
+        std::ostringstream stream;
+        stream << "start_p2p_session result=fail reason=adapter local_port=" << localPort
+               << " error=" << e.what();
+        write_gekko_log(stream.str());
+        CoreSetError("GekkoNet adapter initialization failed: " + std::string(e.what()));
+        close_session();
+        return false;
+    }
+#endif
+#endif
     gekko_set_runahead(g_GekkoSession, 0);
 
     g_GekkoPlayers = players;
     g_GekkoInputSize = inputSize;
     g_GekkoLocalHandle = -1;
     g_GekkoRemoteHandle = -1;
+    g_GekkoPlayerHandles.assign(static_cast<size_t>(players), -1);
     g_GekkoLocalHandles.assign(static_cast<size_t>(players), -1);
     g_GekkoLatchedInput.assign(static_cast<size_t>(players * inputSize), 0);
     g_GekkoHasLatchedInput = false;
@@ -1055,6 +1177,10 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
     }
 
     std::string remoteAddress = std::string(remoteIp) + ":" + std::to_string(remotePort);
+#ifdef RMGK_HAVE_P2P_TRANSPORT
+    remoteAddress = "p2p-peer";
+    g_GekkoP2PRemoteAddress = remoteAddress;
+#endif
     for (int player = 1; player <= players; player++)
     {
         if (player == localPlayer)
@@ -1067,6 +1193,7 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
                 return false;
             }
             g_GekkoLocalHandle = handle;
+            g_GekkoPlayerHandles[static_cast<size_t>(player - 1)] = handle;
             g_GekkoLocalHandles[static_cast<size_t>(player - 1)] = handle;
             gekko_set_local_delay(g_GekkoSession, handle, static_cast<unsigned char>(clampedLocalDelay));
             if (g_GekkoLogEnabled)
@@ -1092,6 +1219,7 @@ CORE_EXPORT bool rmgk_gekko::start_p2p_session(const char* gameName, int players
             {
                 g_GekkoRemoteHandle = handle;
             }
+            g_GekkoPlayerHandles[static_cast<size_t>(player - 1)] = handle;
             if (g_GekkoLogEnabled)
             {
                 std::ostringstream stream;
@@ -1136,7 +1264,7 @@ CORE_EXPORT bool rmgk_gekko::start_local_session(const char* gameName, int playe
     g_GekkoStopRequested.store(false, std::memory_order_relaxed);
     reset_gekko_log();
 
-    if (gameName == nullptr || players < 1 || inputSize != static_cast<int>(sizeof(uint32_t)))
+    if (gameName == nullptr || players < 1 || players > 4 || inputSize != static_cast<int>(sizeof(uint32_t)))
     {
         write_gekko_log("start_local_session result=fail reason=invalid_params");
         return false;
@@ -1167,6 +1295,7 @@ CORE_EXPORT bool rmgk_gekko::start_local_session(const char* gameName, int playe
     g_GekkoInputSize = inputSize;
     g_GekkoLocalHandle = -1;
     g_GekkoRemoteHandle = -1;
+    g_GekkoPlayerHandles.assign(static_cast<size_t>(players), -1);
     g_GekkoLocalHandles.assign(static_cast<size_t>(players), -1);
     g_GekkoLatchedInput.assign(static_cast<size_t>(players * inputSize), 0);
     g_GekkoHasLatchedInput = false;
@@ -1185,6 +1314,7 @@ CORE_EXPORT bool rmgk_gekko::start_local_session(const char* gameName, int playe
         {
             g_GekkoLocalHandle = handle;
         }
+        g_GekkoPlayerHandles[static_cast<size_t>(player - 1)] = handle;
         g_GekkoLocalHandles[static_cast<size_t>(player - 1)] = handle;
         gekko_set_local_delay(g_GekkoSession, handle, static_cast<unsigned char>(clampedLocalDelay));
         if (g_GekkoLogEnabled)
@@ -1229,6 +1359,7 @@ CORE_EXPORT void rmgk_gekko::close_session()
     g_GekkoLocalPlayer = 0;
     g_GekkoLocalHandle = -1;
     g_GekkoRemoteHandle = -1;
+    g_GekkoPlayerHandles.clear();
     g_GekkoLocalHandles.clear();
     g_GekkoLatchedInput.clear();
     g_GekkoHasLatchedInput = false;
@@ -1247,6 +1378,9 @@ CORE_EXPORT void rmgk_gekko::close_session()
     }
     g_GekkoSpeedScale = 1.0;
     CoreRollbackSetTimesyncScale(1.0);
+#ifdef RMGK_HAVE_P2P_TRANSPORT
+    g_GekkoP2PRemoteAddress.clear();
+#endif
 #endif
 }
 
@@ -1257,6 +1391,15 @@ CORE_EXPORT void rmgk_gekko::request_stop()
     {
         g_GekkoStopRequested.store(true, std::memory_order_relaxed);
     }
+#endif
+}
+
+CORE_EXPORT bool rmgk_gekko::is_netplay_session_active()
+{
+#ifdef RMGK_HAVE_GEKKONET
+    return g_GekkoSession != nullptr && g_GekkoRemoteHandle >= 0;
+#else
+    return false;
 #endif
 }
 
@@ -1287,7 +1430,8 @@ CORE_EXPORT bool rmgk_gekko::set_deterministic(bool enabled)
 
 CORE_EXPORT bool rmgk_gekko::install_core_input_callback()
 {
-    return CoreRollbackSetInputCallback(rmgk_gekko_core_input_callback);
+    return CoreRollbackSetInputPlayers(g_GekkoPlayers) &&
+        CoreRollbackSetInputCallback(rmgk_gekko_core_input_callback);
 }
 
 CORE_EXPORT void rmgk_gekko::clear_core_input_callback()

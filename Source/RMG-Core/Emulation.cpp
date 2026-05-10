@@ -143,6 +143,10 @@ static void FrameCallback(unsigned int frameIndex)
 static void KailleraPifSyncCallback(struct pif* pif)
 {
 #ifdef NETPLAY
+    if (rmgk_gekko::is_netplay_session_active()) {
+        return;
+    }
+
     if (!CoreHasInitKaillera()) {
         return;
     }
@@ -420,7 +424,7 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
     std::string address, int port, int player)
 {
     std::string error;
-    m64p_error  m64p_ret;
+    m64p_error  m64p_ret = M64ERR_SUCCESS;
     bool        netplay_ret = false;
     CoreRomType type;
     bool        netplay = !address.empty();
@@ -505,10 +509,13 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
     // apply pif rom settings
     apply_pif_rom_settings();
 
+    const bool localRollbackEnabled = !netplay &&
+        CoreSettingsGetBoolValue(SettingsID::Rollback_EnableLocalTesting);
+
 #ifdef NETPLAY
-    // Apply deterministic settings AFTER all overlays for Kaillera netplay
-    // This ensures user/game-specific settings don't override critical sync settings
-    if (!netplay || (address == "KAILLERA" || address.rfind("GEKKO|", 0) == 0))
+    // Apply deterministic settings AFTER all overlays for synchronized netplay or
+    // explicit local rollback testing.
+    if (localRollbackEnabled || (netplay && (address == "KAILLERA" || address.rfind("GEKKO|", 0) == 0)))
     {
         apply_kaillera_deterministic_settings();
     }
@@ -579,7 +586,7 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
 #endif // NETPLAY
 
     bool rollbackExecute = false;
-    if (!netplay)
+    if (localRollbackEnabled)
     {
         if (!rmgk_gekko::set_deterministic(true))
         {
@@ -610,7 +617,7 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
 
     // only start emulation when initializing netplay/local rollback
     // is successful or if there's legacy netplay requested
-    if ((!netplay && rollbackExecute) || (netplay && netplay_ret))
+    if ((!netplay && (!localRollbackEnabled || rollbackExecute)) || (netplay && netplay_ret))
     {
         // Register frame callback for frame counter (used by Kaillera)
         s_CurrentFrame = 0;
@@ -642,7 +649,7 @@ CORE_EXPORT bool CoreStartEmulation(std::filesystem::path n64rom, std::filesyste
 #endif
             if (set_callback)
             {
-                set_callback(KailleraPifSyncCallback);
+                set_callback(address == "KAILLERA" ? KailleraPifSyncCallback : nullptr);
             }
         }
 #endif
@@ -760,7 +767,7 @@ CORE_EXPORT bool CorePauseEmulation(void)
         return false;
     }
 
-    if (CoreHasInitNetplay() || (CoreHasInitKaillera() && !CoreIsKailleraPlaybackMode()))
+    if (CoreIsSynchronizedNetplayActive())
     {
         return false;
     }
@@ -794,7 +801,7 @@ CORE_EXPORT bool CoreResumeEmulation(void)
         return false;
     }
 
-    if (CoreHasInitNetplay() || (CoreHasInitKaillera() && !CoreIsKailleraPlaybackMode()))
+    if (CoreIsSynchronizedNetplayActive())
     {
         return false;
     }
@@ -838,7 +845,7 @@ CORE_EXPORT bool CoreRunFrames(int frames, int flags)
         return false;
     }
 
-    if (CoreHasInitNetplay() || (CoreHasInitKaillera() && !CoreIsKailleraPlaybackMode()))
+    if (CoreIsSynchronizedNetplayActive())
     {
         return false;
     }
@@ -932,6 +939,28 @@ CORE_EXPORT bool CoreIsEmulationPaused(void)
 {
     m64p_emu_state state = M64EMU_STOPPED;
     return get_emulation_state(state) && state == M64EMU_PAUSED;
+}
+
+CORE_EXPORT bool CoreIsSynchronizedNetplayActive(void)
+{
+    if (CoreHasInitNetplay())
+    {
+        return true;
+    }
+
+    if (CoreHasInitKaillera() && !CoreIsKailleraPlaybackMode())
+    {
+        return true;
+    }
+
+#ifdef NETPLAY
+    if (rmgk_gekko::is_netplay_session_active())
+    {
+        return true;
+    }
+#endif
+
+    return false;
 }
 
 CORE_EXPORT int CoreGetCurrentFrameCount(void)
