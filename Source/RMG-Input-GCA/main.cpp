@@ -463,6 +463,12 @@ EXPORT void CALL ControllerCommand(int Control, unsigned char* Command)
 
 EXPORT void CALL GetKeys(int Control, BUTTONS* Keys)
 {
+    if (Control < 0 || Control >= NUM_CONTROLLERS)
+    {
+        Keys->Value = 0;
+        return;
+    }
+
     // Use the port mapping to translate Control index to physical port
     int port = l_ControlToPort[Control];
     if (port < 0)
@@ -515,6 +521,8 @@ EXPORT void CALL GetKeys(int Control, BUTTONS* Keys)
 
 EXPORT void CALL InitiateControllers(CONTROL_INFO ControlInfo)
 {
+    load_settings();
+
     if (!gca_init())
     {
         return;
@@ -529,15 +537,15 @@ EXPORT void CALL InitiateControllers(CONTROL_INFO ControlInfo)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    // Map enabled+connected physical ports to Control slots sequentially.
-    // This ensures netplay works regardless of which adapter port the
-    // controller is plugged into (e.g. port 4 maps to Control 0).
+    // Map enabled physical ports to Control slots sequentially.
+    // This keeps Control 0 stable for rollback even if the adapter reports
+    // controller presence slightly after InitiateControllers().
     l_ControllerStateMutex.lock();
     l_ControlToPort = {-1, -1, -1, -1};
     int controlSlot = 0;
     for (int i = 0; i < NUM_CONTROLLERS; i++)
     {
-        if (l_Settings.PortEnabled[i] && l_ControllerState[i].Status > 0)
+        if (l_Settings.PortEnabled[i])
         {
             l_ControlToPort[controlSlot] = i;
             controlSlot++;
@@ -546,12 +554,10 @@ EXPORT void CALL InitiateControllers(CONTROL_INFO ControlInfo)
 
     for (int i = 0; i < NUM_CONTROLLERS; i++)
     {
-        ControlInfo.Controls[i].Present = (l_ControlToPort[i] >= 0) ? 1 : 0;
+        const int port = l_ControlToPort[i];
+        ControlInfo.Controls[i].Present = (port >= 0 && l_ControllerState[port].Status > 0) ? 1 : 0;
     }
     l_ControllerStateMutex.unlock();
-
-    // load settings
-    load_settings();
 }
 
 EXPORT void CALL ReadController(int Control, unsigned char *Command)
