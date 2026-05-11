@@ -19,6 +19,7 @@
 #include <RMG-Core/Settings.hpp>
 
 #include "core/p2p_core.h"
+#include "kailleraclient.h"
 #include "n02_client.h"
 
 #include <QVBoxLayout>
@@ -29,6 +30,7 @@
 #include <QIcon>
 #include <QFrame>
 #include <QListView>
+#include <QMessageBox>
 
 #include <algorithm>
 #include <cstring>
@@ -57,6 +59,26 @@ static QIcon themedP2PIcon(const QString& iconName)
     const bool darkTheme = QApplication::palette().window().color().value() < 128;
     return QIcon(QString(":/icons/%1/svg/%2.svg")
         .arg(darkTheme ? "white" : "black", iconName));
+}
+
+static bool localGameListContains(const QString& gameName)
+{
+    if (gameName.startsWith("*") || infos.gameList == nullptr)
+    {
+        return true;
+    }
+
+    const char* p = infos.gameList;
+    while (*p)
+    {
+        if (gameName == QString::fromUtf8(p))
+        {
+            return true;
+        }
+        p += strlen(p) + 1;
+    }
+
+    return false;
 }
 
 static QString buildP2PStyleSheet(const QString& theme)
@@ -523,6 +545,10 @@ void KailleraP2PDialog::setupUI()
     m_btnReady = new QPushButton("Ready", this);
     m_btnReady->setCheckable(true);
     m_btnReady->setObjectName("KailleraP2PPrimaryButton");
+    if (!m_isHost)
+    {
+        m_btnReady->setEnabled(false);
+    }
     m_btnDrop = new QPushButton("Drop Game", this);
     m_btnDrop->setObjectName("KailleraP2PSecondaryButton");
     btnRow->addWidget(m_btnReady);
@@ -605,10 +631,13 @@ void KailleraP2PDialog::setupUI()
         hostLayout->addLayout(codeRow);
 
         m_enlistCheck = new QCheckBox("Show on public list", m_hostGroup);
+        m_enlistCheck->setChecked(CoreSettingsGetBoolValue(SettingsID::Kaillera_P2PShowOnPublicList));
         hostLayout->addWidget(m_enlistCheck);
 
         bottomLayout->addWidget(m_hostGroup, 0, Qt::AlignTop);
         connect(m_enlistCheck, &QCheckBox::toggled, this, [this](bool checked) {
+            CoreSettingsSetValue(SettingsID::Kaillera_P2PShowOnPublicList, checked);
+            CoreSettingsSave();
             if (checked)
                 enlistGame();
             else
@@ -660,6 +689,8 @@ void KailleraP2PDialog::connectSignals()
     connect(&bridge, &KailleraUIBridge::p2pClientDropped, this, &KailleraP2PDialog::onClientDropped,
             kUiCallbackConnection);
     connect(&bridge, &KailleraUIBridge::p2pDebugMessage, this, &KailleraP2PDialog::onDebug,
+            kUiCallbackConnection);
+    connect(&bridge, &KailleraUIBridge::p2pHostedGame, this, &KailleraP2PDialog::onHostedGame,
             kUiCallbackConnection);
     connect(&bridge, &KailleraUIBridge::p2pPingUpdated, this, &KailleraP2PDialog::onPingUpdated,
             kUiCallbackConnection);
@@ -1241,6 +1272,41 @@ void KailleraP2PDialog::onDebug(QString message)
     m_chat->append("<span style='color:green;'>" + message.toHtmlEscaped() + "</span>");
 }
 
+void KailleraP2PDialog::onHostedGame(QString game)
+{
+    if (m_isHost)
+    {
+        return;
+    }
+
+    m_gameName = game;
+    if (m_gameLabel != nullptr)
+    {
+        m_gameLabel->setText("Game: " + m_gameName);
+    }
+
+    if (localGameListContains(m_gameName))
+    {
+        if (m_btnReady != nullptr)
+        {
+            m_btnReady->setEnabled(true);
+        }
+        return;
+    }
+
+    m_ready = false;
+    if (m_btnReady != nullptr)
+    {
+        m_btnReady->setChecked(false);
+        m_btnReady->setEnabled(false);
+    }
+
+    const QString message = "The ROM '" + m_gameName + "' is not in your list.";
+    m_chat->append("<span style='color:red;'>" + timestamp() + message.toHtmlEscaped() + "</span>");
+    QMessageBox::warning(this, "P2P Join", message);
+    reject();
+}
+
 void KailleraP2PDialog::onPingUpdated(int ping)
 {
     if (!m_pingLabel)
@@ -1291,6 +1357,10 @@ void KailleraP2PDialog::onPeerLeft()
     m_chat->append("<span style='color:red;'>" + timestamp() + "Peer disconnected.</span>");
     m_ready = false;
     if (m_btnReady) m_btnReady->setChecked(false);
+    if (!m_isHost && m_btnReady != nullptr)
+    {
+        m_btnReady->setEnabled(false);
+    }
 
     // Clear peer punching state (always, regardless of trav mode)
     m_travHostPeerIp.clear();
@@ -1344,6 +1414,16 @@ void KailleraP2PDialog::onSendChat()
 
 void KailleraP2PDialog::onReady()
 {
+    if (!m_isHost && m_gameName.isEmpty())
+    {
+        m_ready = false;
+        if (m_btnReady != nullptr)
+        {
+            m_btnReady->setChecked(false);
+        }
+        return;
+    }
+
     m_ready = (m_btnReady != nullptr) ? m_btnReady->isChecked() : !m_ready;
 
     p2p_set_ready(m_ready);

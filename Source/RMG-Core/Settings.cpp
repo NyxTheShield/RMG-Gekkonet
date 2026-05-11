@@ -212,7 +212,7 @@ static l_Setting get_setting(SettingsID settingId)
         break;
 
     case SettingsID::Kaillera_ActiveMode:
-        setting = {SETTING_SECTION_KAILLERA, "ActiveMode", 1}; // 0=P2P, 1=Server, 2=Playback
+        setting = {SETTING_SECTION_KAILLERA, "ActiveMode", 0}; // 0=P2P, 1=Server, 2=Playback
         break;
     case SettingsID::Kaillera_Username:
         setting = {SETTING_SECTION_KAILLERA, "Username", std::string("Player")};
@@ -324,6 +324,9 @@ static l_Setting get_setting(SettingsID settingId)
         break;
     case SettingsID::Kaillera_P2PLastGame:
         setting = {SETTING_SECTION_KAILLERA, "P2PLastGame", std::string("")};
+        break;
+    case SettingsID::Kaillera_P2PShowOnPublicList:
+        setting = {SETTING_SECTION_KAILLERA, "P2PShowOnPublicList", true};
         break;
     case SettingsID::Kaillera_FfmpegPath:
         setting = {SETTING_SECTION_KAILLERA, "FfmpegPath", std::string("")};

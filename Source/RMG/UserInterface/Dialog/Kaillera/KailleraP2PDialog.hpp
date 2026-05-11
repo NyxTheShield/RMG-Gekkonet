@@ -46,6 +46,7 @@ private slots:
     void onGameEnded();
     void onClientDropped(QString nick, int player);
     void onDebug(QString message);
+    void onHostedGame(QString game);
     void onPingUpdated(int ping);
     void onPeerJoined();
     void onPeerLeft();

@@ -97,6 +97,7 @@ enum class SettingsID
     Kaillera_GameColumnWidths,
     Kaillera_PlayerColumnWidths,
     Kaillera_P2PLastGame,
+    Kaillera_P2PShowOnPublicList,
     Kaillera_FfmpegPath,
     Kaillera_ExportLabelPorts,
 
