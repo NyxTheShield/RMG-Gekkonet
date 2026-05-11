@@ -122,6 +122,14 @@ static void rollback_force_controller_present(struct pif_channel* channel)
     }
 }
 
+static int rollback_should_skip_raw_pif_channel(size_t player)
+{
+    return l_rollback_input_callback != NULL
+        && player < (size_t)l_rollback_input_players
+        && player < NUM_CONTROLLER
+        && Controls[player].RawData;
+}
+
 void pif_begin_rollback_input_frame(void)
 {
     l_rollback_input_valid = 0;
@@ -517,14 +525,20 @@ void process_pif_ram(struct pif* pif)
 void update_pif_ram(struct pif* pif)
 {
     size_t k;
+    int skipped_raw_pif_channel = 0;
 
     /* perform PIF/Channel communications */
     for (k = 0; k < PIF_CHANNELS_COUNT; ++k) {
+        if (rollback_should_skip_raw_pif_channel(k)) {
+            skipped_raw_pif_channel = 1;
+            rollback_force_controller_present(&pif->channels[k]);
+            continue;
+        }
         process_channel(&pif->channels[k]);
     }
 
     /* Zilmar-Spec plugin expect a call with control_id = -1 when RAM processing is done */
-    if (input.readController) {
+    if (input.readController && !skipped_raw_pif_channel) {
         input.readController(-1, NULL);
     }
 
