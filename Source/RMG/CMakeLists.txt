@@ -35,6 +35,9 @@ if (NETPLAY)
 endif(NETPLAY)
 
 find_package(SDL3 REQUIRED)
+if (WIN32 AND NETPLAY)
+    find_package(OpenGL REQUIRED)
+endif()
 
 # hidapi for raphnet adapter input test dialog
 find_package(PkgConfig REQUIRED)
@@ -126,6 +129,17 @@ if (NETPLAY)
         UserInterface/Widget/Netplay/CreateNetplaySessionEmptyWidget.cpp
         UserInterface/Widget/Netplay/CreateNetplaySessionEmptyWidget.ui
     )
+    if (WIN32)
+        list(APPEND RMG_SOURCES
+            Utilities/KailleraExport/KrecMp4Export.cpp
+            Utilities/KailleraExport/KrecParser.cpp
+            Utilities/KailleraExport/EmulatorProxy.cpp
+            Utilities/KailleraExport/PifReplay.cpp
+            Utilities/KailleraExport/FrameCapture.cpp
+            Utilities/KailleraExport/FfmpegEncoder.cpp
+            Utilities/KailleraExport/VidExtProxy.cpp
+        )
+    endif(WIN32)
 endif(NETPLAY)
 
 set_source_files_properties(${IMGUI_SOURCES} PROPERTIES GENERATED TRUE)
@@ -176,9 +190,9 @@ endif(KCA_DRAG_DROP)
 if (NETPLAY)
     target_link_libraries(RMG Qt6::WebSockets Qt6::Network)
     if (WIN32)
+        target_link_libraries(RMG SDL3::SDL3 OpenGL::GL)
         target_include_directories(RMG PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/../n02
         )
     endif(WIN32)
 endif(NETPLAY)
-

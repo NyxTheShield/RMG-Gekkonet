@@ -38,6 +38,8 @@ enum class SettingsID
     GUI_OnScreenDisplayDuration,
     GUI_OnScreenDisplayScale,
     GUI_OnScreenDisplayMaxMessages,
+    GUI_OnScreenDisplayChatEnabled,
+    GUI_OnScreenDisplayKailleraPortLabels,
     GUI_AutoStartNetplayOnStartup,
     GUI_Toolbar,
     GUI_ToolbarArea,
@@ -96,6 +98,8 @@ enum class SettingsID
     Kaillera_PlayerColumnWidths,
     Kaillera_P2PLastGame,
     Kaillera_P2PShowOnPublicList,
+    Kaillera_FfmpegPath,
+    Kaillera_ExportLabelPorts,
 
     // Core Plugin Settings
     Core_GFX_Plugin,

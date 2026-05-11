@@ -55,6 +55,9 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
 
     bool Init(QApplication* app, bool showUI, bool launchROM);
     void OpenROM(QString file, QString disk, bool fullscreen, bool quitAfterEmulation, int stateSlot);
+#ifdef NETPLAY
+    QString ResolveKailleraRomByName(QString gameName);
+#endif
 
   private:
     Thread::EmulationThread *emulationThread = nullptr;

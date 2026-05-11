@@ -14,9 +14,11 @@
 #include <backends/imgui_impl_opengl3.h>
 #include <imgui.h>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <chrono>
 #include <deque>
+#include <string>
 
 //
 // Local Variables
@@ -58,12 +60,17 @@ static float       l_TextAlpha       = 1.0f;
 static int         l_MessageDuration = 7;
 static float       l_MessageScale    = 1.25f;
 static size_t      l_KailleraChatMaxMessages = 5;
+static bool        l_KailleraChatEnabled = true;
 static bool        l_FontsDirty      = true;
 static const float l_BaseFontSize    = 13.0f;
 static const float l_MessageFadeoutDurationSeconds = 0.26f;
 static const float l_MessageSlideInDurationSeconds = 0.31f;
 static bool        l_InputPromptActive = false;
 static std::string l_InputPrompt;
+static bool        l_KailleraPortLabelsEnabled = false;
+static int         l_KailleraPortLabelPlayerCount = 0;
+static std::array<std::string, 4> l_KailleraPortLabelPlayerNames;
+static constexpr std::array<float, 4> l_KailleraPortLabelCenterOffset720p = { 19.0f, 0.0f, -19.0f, -70.0f };
 
 static float OnScreenDisplayEaseOutCubic(float t)
 {
@@ -169,6 +176,114 @@ static void OnScreenDisplayUpdateFonts(void)
     l_FontsDirty = false;
 }
 
+static std::string OnScreenDisplayNormalizePortLabelName(const std::string& name, int playerIndex)
+{
+    std::string label = name.empty()
+        ? ("P" + std::to_string(playerIndex + 1))
+        : name;
+
+    for (char& c : label)
+    {
+        if (static_cast<unsigned char>(c) < 32)
+        {
+            c = ' ';
+        }
+    }
+    return label;
+}
+
+static std::string OnScreenDisplayTruncateToWidth(std::string label, float textScale, float maxTextWidth)
+{
+    if (maxTextWidth <= 0.0f)
+    {
+        return {};
+    }
+
+    while (!label.empty())
+    {
+        const float textWidth = ImGui::CalcTextSize(label.c_str()).x * textScale;
+        if (textWidth <= maxTextWidth)
+        {
+            return label;
+        }
+        label.pop_back();
+    }
+
+    return label;
+}
+
+static void OnScreenDisplayRenderKailleraPortLabels(void)
+{
+    if (!l_KailleraPortLabelsEnabled || l_KailleraPortLabelPlayerCount <= 0)
+    {
+        return;
+    }
+
+    ImGuiIO& io = ImGui::GetIO();
+    const int playerCount = std::clamp(l_KailleraPortLabelPlayerCount, 1, 4);
+    float contentX = 0.0f;
+    float contentY = 0.0f;
+    float contentWidth = io.DisplaySize.x;
+    float contentHeight = io.DisplaySize.y;
+    if (io.DisplaySize.x > io.DisplaySize.y * (4.0f / 3.0f))
+    {
+        contentWidth = io.DisplaySize.y * (4.0f / 3.0f);
+        contentX = (io.DisplaySize.x - contentWidth) * 0.5f;
+    }
+    else
+    {
+        contentHeight = io.DisplaySize.x * (3.0f / 4.0f);
+        contentY = (io.DisplaySize.y - contentHeight) * 0.5f;
+    }
+
+    const float outputScale720p = contentHeight / 720.0f;
+    const float baseScale = std::max(1.0f, contentHeight / 240.0f);
+    const float fontScale = (baseScale * 7.0f) / (l_BaseFontSize * std::max(l_MessageScale, 0.1f));
+    const float compactFontScale = std::max(0.65f, fontScale * 0.82f);
+    const float portWidth = contentWidth / 4.0f;
+    const ImVec2 labelPadding(4.0f * baseScale, 2.0f * baseScale);
+    const float labelHeight = (ImGui::GetTextLineHeight() * fontScale) + (labelPadding.y * 2.0f);
+    const float y = contentY + contentHeight - (4.0f * baseScale) - (labelHeight * 0.5f);
+
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(l_BackgroundRed, l_BackgroundGreen, l_BackgroundBlue, l_BackgroundAlpha));
+    ImGui::PushStyleColor(ImGuiCol_Text,     ImVec4(l_TextRed, l_TextGreen, l_TextBlue, l_TextAlpha));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, labelPadding);
+
+    for (int i = 0; i < playerCount; ++i)
+    {
+        std::string label = OnScreenDisplayNormalizePortLabelName(l_KailleraPortLabelPlayerNames[static_cast<size_t>(i)], i);
+        const float maxTextWidth = std::max(0.0f, portWidth - (8.0f * baseScale));
+        float activeFontScale = fontScale;
+
+        const float normalTextWidth = ImGui::CalcTextSize(label.c_str()).x * fontScale;
+        if (normalTextWidth > maxTextWidth)
+        {
+            activeFontScale = compactFontScale;
+            label = OnScreenDisplayTruncateToWidth(label, activeFontScale, maxTextWidth);
+        }
+
+        const float offsetX = l_KailleraPortLabelCenterOffset720p[static_cast<size_t>(i)] * outputScale720p;
+        const float centerX = contentX + portWidth * static_cast<float>(i) + (portWidth / 2.0f) + offsetX;
+        ImGui::SetNextWindowPos(ImVec2(centerX, y), ImGuiCond_Always, ImVec2(0.5f, 1.0f));
+        ImGui::SetNextWindowSizeConstraints(
+            ImVec2(0.0f, 0.0f),
+            ImVec2(std::max(1.0f, portWidth - (4.0f * baseScale)), io.DisplaySize.y));
+        const std::string windowName = "Kaillera Port Label##" + std::to_string(i);
+        ImGui::Begin(windowName.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoFocusOnAppearing);
+        ImGui::SetWindowFontScale(activeFontScale);
+        const ImVec2 textPos = ImGui::GetCursorPos();
+        ImGui::SetCursorPos(ImVec2(textPos.x + 1.0f, textPos.y));
+        ImGui::Text("%s", label.c_str());
+        ImGui::SetCursorPos(textPos);
+        ImGui::Text("%s", label.c_str());
+        ImGui::SetWindowFontScale(1.0f);
+        ImGui::End();
+    }
+
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(2);
+}
+
 //
 // Exported Functions
 //
@@ -207,6 +322,9 @@ void OnScreenDisplayShutdown(void)
     l_MessageQueue.clear();
     l_InputPromptActive = false;
     l_InputPrompt.clear();
+    l_KailleraChatEnabled = true;
+    l_KailleraPortLabelPlayerCount = 0;
+    l_KailleraPortLabelPlayerNames = {};
     l_Initialized     = false;
     l_RenderingPaused = false;
 }
@@ -214,6 +332,8 @@ void OnScreenDisplayShutdown(void)
 void OnScreenDisplayLoadSettings(void)
 {
     l_Enabled         = CoreSettingsGetBoolValue(SettingsID::GUI_OnScreenDisplayEnabled);
+    l_KailleraChatEnabled = CoreSettingsGetBoolValue(SettingsID::GUI_OnScreenDisplayChatEnabled);
+    l_KailleraPortLabelsEnabled = CoreSettingsGetBoolValue(SettingsID::GUI_OnScreenDisplayKailleraPortLabels);
     l_MessagePosition = CoreSettingsGetIntValue(SettingsID::GUI_OnScreenDisplayLocation);
     l_MessagePaddingX = CoreSettingsGetIntValue(SettingsID::GUI_OnScreenDisplayPaddingX);
     l_MessagePaddingY = CoreSettingsGetIntValue(SettingsID::GUI_OnScreenDisplayPaddingY);
@@ -234,6 +354,22 @@ void OnScreenDisplayLoadSettings(void)
         maxChatMessages = 1;
     }
     l_KailleraChatMaxMessages = static_cast<size_t>(maxChatMessages);
+    if (!l_KailleraChatEnabled)
+    {
+        l_InputPromptActive = false;
+        l_InputPrompt.clear();
+        for (auto it = l_MessageQueue.begin(); it != l_MessageQueue.end();)
+        {
+            if (it->type == OnScreenDisplayMessageType::Chat)
+            {
+                it = l_MessageQueue.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
 
     std::vector<int> backgroundColor = CoreSettingsGetIntListValue(SettingsID::GUI_OnScreenDisplayBackgroundColor);
     std::vector<int> textColor       = CoreSettingsGetIntListValue(SettingsID::GUI_OnScreenDisplayTextColor);
@@ -318,8 +454,37 @@ void OnScreenDisplaySetKailleraChatMessage(std::string message)
         return;
     }
 
+    if (!l_KailleraChatEnabled)
+    {
+        return;
+    }
+
     l_MessageQueue.push_back({std::move(message), std::chrono::high_resolution_clock::now(), OnScreenDisplayMessageType::Chat});
     OnScreenDisplayEnforceQueueLimitWithFade(std::chrono::high_resolution_clock::now());
+}
+
+void OnScreenDisplaySetKailleraChatEnabled(bool enabled)
+{
+    l_KailleraChatEnabled = enabled;
+    if (enabled)
+    {
+        return;
+    }
+
+    l_InputPromptActive = false;
+    l_InputPrompt.clear();
+
+    for (auto it = l_MessageQueue.begin(); it != l_MessageQueue.end();)
+    {
+        if (it->type == OnScreenDisplayMessageType::Chat)
+        {
+            it = l_MessageQueue.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
 }
 
 void OnScreenDisplaySetKailleraChatMessageImmediate(std::string message)
@@ -345,6 +510,11 @@ void OnScreenDisplaySetKailleraChatMessageImmediate(std::string message)
         return;
     }
 
+    if (!l_KailleraChatEnabled)
+    {
+        return;
+    }
+
     l_MessageQueue.push_back({std::move(message), std::chrono::high_resolution_clock::now(), OnScreenDisplayMessageType::Chat, true});
     OnScreenDisplayEnforceQueueLimitWithFade(std::chrono::high_resolution_clock::now());
 }
@@ -356,7 +526,7 @@ void OnScreenDisplaySetInputPrompt(std::string message)
         return;
     }
 
-    if (message.empty())
+    if (message.empty() || !l_KailleraChatEnabled)
     {
         l_InputPromptActive = false;
         l_InputPrompt.clear();
@@ -365,6 +535,18 @@ void OnScreenDisplaySetInputPrompt(std::string message)
 
     l_InputPromptActive = true;
     l_InputPrompt = std::move(message);
+}
+
+void OnScreenDisplaySetKailleraPortLabels(int playerCount, const std::array<std::string, 4>& playerNames)
+{
+    l_KailleraPortLabelPlayerCount = std::clamp(playerCount, 0, 4);
+    l_KailleraPortLabelPlayerNames = playerNames;
+}
+
+void OnScreenDisplayClearKailleraPortLabels(void)
+{
+    l_KailleraPortLabelPlayerCount = 0;
+    l_KailleraPortLabelPlayerNames = {};
 }
 
 void OnScreenDisplayRender(void)
@@ -411,14 +593,16 @@ void OnScreenDisplayRender(void)
     for (const auto& messageEntry : l_MessageQueue)
     {
         const float alpha = getMessageFadeAlpha(getMessageAgeSeconds(messageEntry)) * getOverflowFadeAlpha(messageEntry);
-        if (alpha > 0.0f)
+        if (alpha > 0.0f &&
+            (messageEntry.type != OnScreenDisplayMessageType::Chat || l_KailleraChatEnabled))
         {
             hasVisibleQueueMessage = true;
             break;
         }
     }
 
-    const bool hasMessages = l_Enabled && (hasVisibleQueueMessage || l_InputPromptActive);
+    const bool hasPortLabels = l_KailleraPortLabelsEnabled && l_KailleraPortLabelPlayerCount > 0;
+    const bool hasMessages = l_Enabled && (hasVisibleQueueMessage || l_InputPromptActive || hasPortLabels);
 
     if (!hasMessages)
     {
@@ -511,6 +695,10 @@ void OnScreenDisplayRender(void)
         {
             break;
         }
+        if (messageIter->type == OnScreenDisplayMessageType::Chat && !l_KailleraChatEnabled)
+        {
+            continue;
+        }
 
         const float messageAgeSeconds = getMessageAgeSeconds(*messageIter);
         const float overflowFadeAlpha = getOverflowFadeAlpha(*messageIter);
@@ -555,6 +743,8 @@ void OnScreenDisplayRender(void)
     }
 
     ImGui::PopStyleColor(2);
+
+    OnScreenDisplayRenderKailleraPortLabels();
 
     ImGui::Render();
 

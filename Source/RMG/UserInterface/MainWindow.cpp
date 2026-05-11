@@ -25,6 +25,7 @@
 #include "KailleraUIBridge.hpp"
 #include "Dialog/Kaillera/KailleraPlaybackDialog.hpp"
 #include "n02_client.h"
+#include "kailleraclient.h"
 #endif // NETPLAY
 #include "Dialog/RaphnetInputDialog.hpp"
 #include "UserInterface/EventFilter.hpp"
@@ -213,6 +214,18 @@ QString NormalizeOsdKailleraChatMessage(QString message)
     message.replace('\n', ' ');
     return message;
 }
+
+#ifdef _WIN32
+std::array<std::string, 4> GetLiveKailleraPortLabelNames()
+{
+    std::array<std::string, 4> playerNames;
+    for (size_t i = 0; i < playerNames.size(); ++i)
+    {
+        playerNames[i] = recording_player_names[i];
+    }
+    return playerNames;
+}
+#endif // _WIN32
 #endif // NETPLAY
 } // namespace
 
@@ -931,7 +944,8 @@ void MainWindow::checkRaphnetPluginMismatch(void)
         }
 
         // Update input settings button enabled state
-        bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input) || isRaphnetRawPlugin();
+        bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input) ||
+            (isRaphnetRawPlugin() && !CoreIsEmulationRunning());
         this->action_Settings_Input->setEnabled(hasInputConfig);
         this->action_Toolbar_Input->setEnabled(hasInputConfig);
     }
@@ -1332,9 +1346,11 @@ void MainWindow::updateActions(bool inEmulation, bool isPaused)
     this->action_Settings_Rsp->setEnabled(CorePluginsHasConfig(CorePluginType::Rsp));
     this->action_Settings_Rsp->setShortcut(QKeySequence(keyBinding));
     keyBinding = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::KeyBinding_InputSettings));
-    this->action_Settings_Input->setEnabled(CorePluginsHasConfig(CorePluginType::Input) || isRaphnetRawPlugin());
+    bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input);
+    bool hasRaphnetRawInputTest = isRaphnetRawPlugin() && !inEmulation;
+    this->action_Settings_Input->setEnabled(hasInputConfig || hasRaphnetRawInputTest);
     this->action_Settings_Input->setShortcut(QKeySequence(keyBinding));
-    this->action_Toolbar_Input->setEnabled(CorePluginsHasConfig(CorePluginType::Input) || isRaphnetRawPlugin());
+    this->action_Toolbar_Input->setEnabled(hasInputConfig || hasRaphnetRawInputTest);
     keyBinding = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::KeyBinding_Settings));
     this->action_Settings_Settings->setShortcut(QKeySequence(keyBinding));
 
@@ -2462,10 +2478,13 @@ void MainWindow::on_Action_Settings_Input(void)
 {
     // If raphnetraw is the active input plugin, open the input test dialog
     // (only when no ROM is running to avoid interfering with game input)
-    if (isRaphnetRawPlugin() && !CoreIsEmulationRunning())
+    if (isRaphnetRawPlugin())
     {
-        UserInterface::RaphnetInputDialog dialog(this);
-        dialog.exec();
+        if (!CoreIsEmulationRunning())
+        {
+            UserInterface::RaphnetInputDialog dialog(this);
+            dialog.exec();
+        }
         return;
     }
 
@@ -2484,7 +2503,8 @@ void MainWindow::on_Action_Settings_Input(void)
         }
 
         // Update input settings button enabled state
-        bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input) || isRaphnetRawPlugin();
+        bool hasInputConfig = CorePluginsHasConfig(CorePluginType::Input) ||
+            (isRaphnetRawPlugin() && !CoreIsEmulationRunning());
         this->action_Settings_Input->setEnabled(hasInputConfig);
         this->action_Toolbar_Input->setEnabled(hasInputConfig);
     }
@@ -2889,6 +2909,9 @@ void MainWindow::on_Kaillera_GameStarted(QString gameName, int playerNum, int to
     }
 
     this->emulationThread->SetNetplay("KAILLERA", 0, playerNum); // "KAILLERA" is the marker
+#ifdef _WIN32
+    OnScreenDisplaySetKailleraPortLabels(totalPlayers, GetLiveKailleraPortLabelNames());
+#endif
     this->launchEmulationThread(romFile, "", false, -1, true);
 }
 
@@ -2959,6 +2982,7 @@ void MainWindow::on_Kaillera_GameEnded(void)
     CoreMarkKailleraGameInactive();
 
     OnScreenDisplaySetKailleraChatMessage("");
+    OnScreenDisplayClearKailleraPortLabels();
 #ifdef NETPLAY
     this->ui_PendingLocalChatEchoes.clear();
     this->closeNetplayChatPrompt();
@@ -3129,6 +3153,13 @@ void MainWindow::closeNetplayChatPrompt(void)
     this->ui_NetplayChatInputActive = false;
     this->ui_NetplayChatInput.clear();
     OnScreenDisplaySetInputPrompt("");
+}
+#endif // NETPLAY
+
+#ifdef NETPLAY
+QString MainWindow::ResolveKailleraRomByName(QString gameName)
+{
+    return this->findRomByName(gameName);
 }
 #endif // NETPLAY
 

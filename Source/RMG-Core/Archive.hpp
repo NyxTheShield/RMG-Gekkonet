@@ -25,4 +25,7 @@ bool CoreReadArchiveFile(std::filesystem::path file, std::filesystem::path& extr
 // attempts to unzip the file to path
 bool CoreUnzip(std::filesystem::path file, std::filesystem::path path);
 
+// attempts to extract the 7zip file to path
+bool CoreExtract7zip(std::filesystem::path file, std::filesystem::path path);
+
 #endif // CORE_ARCHIVE_HPP
