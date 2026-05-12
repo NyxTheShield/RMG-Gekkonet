@@ -3460,6 +3460,53 @@ void MainWindow::on_QGuiApplication_applicationStateChanged(Qt::ApplicationState
 }
 
 #ifdef UPDATER
+
+namespace
+{
+    // Parse a semver-ish version tag ("0.9.3", "v0.9.3") into numeric
+    // parts. Returns an empty vector for inputs that aren't pure
+    // dot-separated integers (e.g. "vdev-100", "0.9.3-rc1"); callers
+    // treat empty as "newer than any released version" so dev builds
+    // never get prompted to downgrade.
+    QVector<int> parseSemverParts(const QString& in)
+    {
+        QString s = in.trimmed();
+        if (s.startsWith('v') || s.startsWith('V')) s.remove(0, 1);
+        if (s.isEmpty()) return {};
+
+        const QStringList parts = s.split('.');
+        QVector<int> out;
+        out.reserve(parts.size());
+        for (const QString& p : parts)
+        {
+            bool ok = false;
+            const int v = p.toInt(&ok);
+            if (!ok) return {};
+            out.append(v);
+        }
+        return out;
+    }
+
+    // Returns -1 if a < b, 0 if a == b, +1 if a > b. Treat an empty
+    // parts vector as "+inf" so unparseable dev builds compare as
+    // newer than anything tagged.
+    int compareSemver(const QVector<int>& a, const QVector<int>& b)
+    {
+        if (a.isEmpty() && b.isEmpty()) return 0;
+        if (a.isEmpty()) return 1;
+        if (b.isEmpty()) return -1;
+        const int n = std::max(a.size(), b.size());
+        for (int i = 0; i < n; ++i)
+        {
+            const int av = (i < a.size()) ? a[i] : 0;
+            const int bv = (i < b.size()) ? b[i] : 0;
+            if (av < bv) return -1;
+            if (av > bv) return 1;
+        }
+        return 0;
+    }
+}
+
 void MainWindow::on_networkAccessManager_Finished(QNetworkReply* reply)
 {
     if (reply->error())
@@ -3480,8 +3527,15 @@ void MainWindow::on_networkAccessManager_Finished(QNetworkReply* reply)
 
     reply->deleteLater();
 
-    // do nothing when versions match
-    if (currentVersion == latestVersion)
+    // GitHub's /releases/latest endpoint only returns the latest
+    // *non-prerelease*. If we're running a pre-release tag (e.g. 0.9.3
+    // marked prerelease on GitHub), the API hands back the previous
+    // stable (0.9.2). A naive string compare then prompts the user to
+    // "update" to an older version. Compare semantically and only
+    // prompt when latest is genuinely newer.
+    const QVector<int> currentParts = parseSemverParts(currentVersion);
+    const QVector<int> latestParts  = parseSemverParts(latestVersion);
+    if (compareSemver(currentParts, latestParts) >= 0)
     {
         if (!this->ui_SilentUpdateCheck)
         {
