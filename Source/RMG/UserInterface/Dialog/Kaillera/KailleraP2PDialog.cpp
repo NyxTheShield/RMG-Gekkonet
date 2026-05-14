@@ -1179,7 +1179,7 @@ bool KailleraP2PDialog::travTryFallbackConnect(const QString& reason)
 
     m_chat->append("<span style='color:green;'>" + timestamp() +
                    "NAT traversal: " + reason.toHtmlEscaped() +
-                   ". Falling back to " + ip + ":" + QString::number(port) + "</span>");
+                   ". Falling back to direct connect</span>");
 
     QByteArray ipBytes = ip.toUtf8();
     if (!p2p_core_connect(ipBytes.data(), port))
@@ -1383,7 +1383,7 @@ void KailleraP2PDialog::onSsrvPacketReceived(QByteArray cmd, QByteArray saddr)
             int hostPort = atoi(parts[4]);
 
             m_chat->append("<span style='color:green;'>" + timestamp() +
-                           "NAT traversal: got host " + hostIp + ":" + QString::number(hostPort) + "</span>");
+                           "NAT traversal: got host endpoint</span>");
 
             m_travJoinToken = token;
             m_travJoinHostIp = hostIp;
@@ -1427,7 +1427,7 @@ void KailleraP2PDialog::onSsrvPacketReceived(QByteArray cmd, QByteArray saddr)
             if (!m_travLiveToken.isEmpty() && token != m_travLiveToken) return;
 
             m_chat->append("<span style='color:green;'>" + timestamp() +
-                           "NAT traversal: peer " + peerIp + ":" + QString::number(peerPort) + "</span>");
+                           "NAT traversal: got peer endpoint</span>");
 
             m_travHostPeerIp = peerIp;
             m_travHostPeerPort = peerPort;
