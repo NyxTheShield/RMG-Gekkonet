@@ -1684,6 +1684,14 @@ void KailleraP2PDialog::onPeerJoined()
 {
     if (m_pingLabel) m_pingLabel->setText("Ping: measuring...");
     m_chat->append("<span style='color:green;'>" + timestamp() + "Peer connected.</span>");
+    if (m_isHost && CoreSettingsGetBoolValue(SettingsID::Kaillera_BeepOnJoin))
+    {
+        QApplication::beep();
+    }
+    if (m_isHost && CoreSettingsGetBoolValue(SettingsID::Kaillera_FlashOnJoin) && !isActiveWindow())
+    {
+        QApplication::alert(this);
+    }
     sendGameLayer();
     m_travHostPeerIp.clear();
     m_travHostPeerPort = 0;
