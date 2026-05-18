@@ -23,6 +23,7 @@
 #include "n64_cic_nus_6105.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -94,6 +95,39 @@ static int rollback_channel_has_command(const struct pif_channel* channel)
         && channel->rx_buf != NULL;
 }
 
+static void rollback_log_pif_channel(const char* phase, size_t index, const struct pif_channel* channel)
+{
+    FILE* file;
+
+    if (l_rollback_input_callback == NULL || l_rollback_input_players <= 0 || !rollback_channel_has_command(channel)) {
+        return;
+    }
+
+    file = fopen("rollback_pif.log", "a");
+    if (file == NULL) {
+        file = fopen("Bin/Release/rollback_pif.log", "a");
+    }
+    if (file == NULL) {
+        return;
+    }
+
+    fprintf(file,
+        "phase=%s ch=%u tx=0x%02x rx=0x%02x cmd=0x%02x ijbd=%d rx0=0x%02x rx1=0x%02x rx2=0x%02x rx3=0x%02x rx32=0x%02x\n",
+        phase,
+        (unsigned)index,
+        (unsigned)*channel->tx,
+        (unsigned)*channel->rx,
+        (unsigned)channel->tx_buf[0],
+        channel->ijbd != NULL,
+        (unsigned)channel->rx_buf[0],
+        (unsigned)channel->rx_buf[1],
+        (unsigned)channel->rx_buf[2],
+        (unsigned)channel->rx_buf[3],
+        (unsigned)channel->rx_buf[32]);
+
+    fclose(file);
+}
+
 static void rollback_force_controller_present(struct pif_channel* channel)
 {
     if (!rollback_channel_has_command(channel)) {
@@ -105,17 +139,28 @@ static void rollback_force_controller_present(struct pif_channel* channel)
     case JCMD_STATUS:
     case JCMD_RESET:
         *channel->rx &= (uint8_t)~0xc0;
-        channel->rx_buf[0] = 0x00;
-        channel->rx_buf[1] = 0x05;
+        channel->rx_buf[0] = 0x05;
+        channel->rx_buf[1] = 0x00;
         channel->rx_buf[2] = 0x00;
+        break;
+    case JCMD_CONTROLLER_READ:
+        *channel->rx &= (uint8_t)~0xc0;
+        channel->rx_buf[0] = 0x00;
+        channel->rx_buf[1] = 0x00;
+        channel->rx_buf[2] = 0x00;
+        channel->rx_buf[3] = 0x00;
         break;
     case JCMD_PAK_READ:
         *channel->rx &= (uint8_t)~0xc0;
-        channel->rx_buf[32] = 0xff;
+        if (channel->ijbd == NULL) {
+            channel->rx_buf[32] = 0xff;
+        }
         break;
     case JCMD_PAK_WRITE:
         *channel->rx &= (uint8_t)~0xc0;
-        channel->rx_buf[0] = 0xff;
+        if (channel->ijbd == NULL) {
+            channel->rx_buf[0] = 0xff;
+        }
         break;
     default:
         break;
@@ -531,10 +576,14 @@ void update_pif_ram(struct pif* pif)
     for (k = 0; k < PIF_CHANNELS_COUNT; ++k) {
         if (rollback_should_skip_raw_pif_channel(k)) {
             skipped_raw_pif_channel = 1;
+            rollback_log_pif_channel("skip-before", k, &pif->channels[k]);
             rollback_force_controller_present(&pif->channels[k]);
+            rollback_log_pif_channel("skip-after", k, &pif->channels[k]);
             continue;
         }
+        rollback_log_pif_channel("native-before", k, &pif->channels[k]);
         process_channel(&pif->channels[k]);
+        rollback_log_pif_channel("native-after", k, &pif->channels[k]);
     }
 
     /* Zilmar-Spec plugin expect a call with control_id = -1 when RAM processing is done */
@@ -544,6 +593,9 @@ void update_pif_ram(struct pif* pif)
 
     netplay_update_input(pif);
     rollback_sync_input(pif);
+    for (k = 0; k < PIF_CHANNELS_COUNT; ++k) {
+        rollback_log_pif_channel("post-rollback", k, &pif->channels[k]);
+    }
     call_pif_sync_callback(pif);
 
 #ifdef DEBUG_PIF

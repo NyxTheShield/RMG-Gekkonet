@@ -44,10 +44,15 @@ extern "C" {
         uint8_t* rx;
         uint8_t* rx_buf;
     };
+    enum {
+        PIF_CHANNELS_COUNT = 5,
+        PIF_CONTROLLER_CHANNELS_COUNT = 4
+    };
+
     struct pif {
         uint8_t* base;
         uint8_t* ram;
-        struct pif_channel channels[6];  // PIF_CHANNELS_COUNT = 6
+        struct pif_channel channels[PIF_CHANNELS_COUNT];
     };
 
     // Joybus command constants
@@ -127,6 +132,14 @@ static int s_CachedNumReceived = 0;
 // Track whether we've already synced since the last frame advance
 // This is more reliable than comparing frame numbers due to callback timing
 static bool s_SyncedThisFrame = false;
+
+static bool pif_channel_has_command(const pif_channel& channel)
+{
+    return channel.tx != nullptr &&
+           channel.rx != nullptr &&
+           channel.tx_buf != nullptr &&
+           channel.rx_buf != nullptr;
+}
 #endif
 // Frame callback function
 static void FrameCallback(unsigned int frameIndex)
@@ -160,9 +173,8 @@ static void KailleraPifSyncCallback(struct pif* pif)
 
     // Check if this is a controller read command for channel 0 (local player)
     // We only want to sync on actual input reads, not status queries or other commands
-    bool isControllerRead = (pif->channels[0].tx &&
-                             pif->channels[0].tx_buf[0] == JCMD_CONTROLLER_READ &&
-                             pif->channels[0].rx_buf != NULL);
+    bool isControllerRead = (pif_channel_has_command(pif->channels[0]) &&
+                             pif->channels[0].tx_buf[0] == JCMD_CONTROLLER_READ);
 
     // Only sync with Kaillera on controller read commands, and only once per frame
     // This prevents syncing on JCMD_STATUS which would send zero input
@@ -214,8 +226,12 @@ static void KailleraPifSyncCallback(struct pif* pif)
     // without a physical controller connected).
     // JCMD_CONTROLLER_READ data injection is gated on cache availability.
     int numPlayers = CoreGetKailleraNumPlayers();
+    if (numPlayers > PIF_CONTROLLER_CHANNELS_COUNT) {
+        numPlayers = PIF_CONTROLLER_CHANNELS_COUNT;
+    }
+
     for (int i = 0; i < numPlayers && i < MAX_PLAYERS; i++) {
-        if (pif->channels[i].tx && pif->channels[i].rx != NULL) {
+        if (pif_channel_has_command(pif->channels[i])) {
             // Always clear error bits to show controller as connected
             *pif->channels[i].rx &= ~0xC0;
 
