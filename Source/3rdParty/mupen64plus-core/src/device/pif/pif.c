@@ -96,12 +96,17 @@ static int rollback_channel_has_command(const struct pif_channel* channel)
         && channel->rx_buf != NULL;
 }
 
+static int rollback_verbose_pif_input_logging_enabled(void)
+{
+    const char* value = getenv("RMGK_VERBOSE_PIF_INPUT_LOGGING");
+    return value != NULL && value[0] == '1';
+}
+
 static void rollback_log_pif_channel(const char* phase, size_t index, const struct pif_channel* channel)
 {
     FILE* file;
-    const char* enabled = getenv("RMGK_VERBOSE_PIF_INPUT_LOGGING");
 
-    if (enabled == NULL || enabled[0] != '1' || l_rollback_input_callback == NULL || l_rollback_input_players <= 0 || !rollback_channel_has_command(channel)) {
+    if (!rollback_verbose_pif_input_logging_enabled() || l_rollback_input_callback == NULL || l_rollback_input_players <= 0 || !rollback_channel_has_command(channel)) {
         return;
     }
 

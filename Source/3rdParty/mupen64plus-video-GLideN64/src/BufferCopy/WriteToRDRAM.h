@@ -12,13 +12,18 @@ static inline bool rollbackWatchRdramAddress(u32 _address, u32 _size)
 	return _address + _size > 0x00394300u && _address < 0x00394380u;
 }
 
+static inline bool rollbackVerboseGlideInputLoggingEnabled()
+{
+	const char* value = getenv("RMGK_VERBOSE_GLIDE_INPUT_LOGGING");
+	return value != nullptr && value[0] == '1';
+}
+
 template <typename TDst>
 static inline void rollbackLogWriteToRdram(const char* _source, u32 _address, TDst _oldValue, TDst _newValue)
 {
 	FILE* file;
-	const char* enabled = getenv("RMGK_VERBOSE_GLIDE_INPUT_LOGGING");
 
-	if (enabled == nullptr || enabled[0] != '1' || !rollbackWatchRdramAddress(_address, sizeof(TDst)))
+	if (!rollbackWatchRdramAddress(_address, sizeof(TDst)))
 		return;
 
 	file = fopen("rollback_rdram_watch.log", "a");
@@ -71,16 +76,21 @@ void writeToRdram(TSrc* _src, TDst* _dst,
 	u32 numStored = 0;
 	u32 y = 0;
 	TSrc c;
+	const bool logEnabled = rollbackVerboseGlideInputLoggingEnabled();
 	if (chunkStart > 0) {
 		for (u32 x = chunkStart; x < _width; ++x) {
 			c = _src[x];
 			if (tester(c)) {
 				const u32 dstIndex = numStored ^ _xor;
-				const u32 dstAddress = _bufferAddress + (dstIndex << (_bufferSize - 1));
-				const TDst oldValue = _dst[dstIndex];
 				const TDst newValue = converter(c, x, y);
-				_dst[dstIndex] = newValue;
-				rollbackLogWriteToRdram(_logSource, dstAddress, oldValue, newValue);
+				if (logEnabled) {
+					const u32 dstAddress = _bufferAddress + (dstIndex << (_bufferSize - 1));
+					const TDst oldValue = _dst[dstIndex];
+					_dst[dstIndex] = newValue;
+					rollbackLogWriteToRdram(_logSource, dstAddress, oldValue, newValue);
+				} else {
+					_dst[dstIndex] = newValue;
+				}
 			}
 			++numStored;
 		}
@@ -94,11 +104,15 @@ void writeToRdram(TSrc* _src, TDst* _dst,
 			c = _src[x + y *_width];
 			if (tester(c)) {
 				const u32 dstIndex = (x + dsty*_width) ^ _xor;
-				const u32 dstAddress = _bufferAddress + (((_startAddress - _bufferAddress) >> (_bufferSize - 1)) + dstIndex) * sizeof(TDst);
-				const TDst oldValue = _dst[dstIndex];
 				const TDst newValue = converter(c, x, y);
-				_dst[dstIndex] = newValue;
-				rollbackLogWriteToRdram(_logSource, dstAddress, oldValue, newValue);
+				if (logEnabled) {
+					const u32 dstAddress = _bufferAddress + (((_startAddress - _bufferAddress) >> (_bufferSize - 1)) + dstIndex) * sizeof(TDst);
+					const TDst oldValue = _dst[dstIndex];
+					_dst[dstIndex] = newValue;
+					rollbackLogWriteToRdram(_logSource, dstAddress, oldValue, newValue);
+				} else {
+					_dst[dstIndex] = newValue;
+				}
 			}
 			++numStored;
 		}
