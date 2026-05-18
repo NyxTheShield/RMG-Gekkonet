@@ -781,6 +781,17 @@ int modifyPlayValues(void *values, int size) {
     return -1;
 }
 
+void recordingWriteInputs(const void* values, int size) {
+    if (!recording_file.is_open() || values == nullptr || size <= 0) {
+        return;
+    }
+    const short siz = (size > 0x7FFF) ? 0x7FFF : (short)size;
+    RecordingBuffer.put_char(0x12);
+    RecordingBuffer.put_short(siz);
+    RecordingBuffer.put_bytes((char*)values, siz);
+    RecordingBuffer.write();
+}
+
 void chatSend(char *text) {
     if (active_mod.ChatSend)
         active_mod.ChatSend(text);

@@ -4,7 +4,7 @@ Rosalie's Mupen GUI is a free and open-source mupen64plus front-end written in C
 
 This fork is focused around netplay with the Kaillera protocol, supporting both traditional Kaillera servers and direct peer-to-peer connections. Available on Windows and Linux.
 
-<p align="center"><a href='https://ko-fi.com/J3J21OOC74' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi6.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a></p>
+
 
 <p align="center">
 <img width="962" height="860" alt="image" src="https://github.com/user-attachments/assets/adc7a1b3-0c4f-4d5d-9f88-79622e87f6ee" />

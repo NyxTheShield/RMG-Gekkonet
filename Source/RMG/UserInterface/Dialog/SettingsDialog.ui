@@ -199,20 +199,6 @@
                 </widget>
                </item>
                <item>
-                <widget class="QCheckBox" name="pauseEmulationOnFocusCheckbox">
-                 <property name="text">
-                  <string>Pause emulation on focus loss</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QCheckBox" name="resumeEmulationOnFocusCheckBox">
-                 <property name="text">
-                  <string>Resume emulation on focus gain</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
                 <widget class="QCheckBox" name="automaticFullscreenCheckbox">
                  <property name="text">
                   <string>Automatically switch to fullscreen on emulation start</string>

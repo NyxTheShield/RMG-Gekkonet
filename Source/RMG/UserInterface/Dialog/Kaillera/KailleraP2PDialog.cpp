@@ -19,6 +19,7 @@
 #include <RMG-Core/Settings.hpp>
 
 #include "core/p2p_core.h"
+#include "kailleraclient.h"
 #include "n02_client.h"
 
 #include <QVBoxLayout>
@@ -29,6 +30,7 @@
 #include <QIcon>
 #include <QFrame>
 #include <QListView>
+#include <QMessageBox>
 #include <QSettings>
 
 #include <algorithm>
@@ -61,6 +63,26 @@ static QIcon themedP2PIcon(const QString& iconName)
     const bool darkTheme = QApplication::palette().window().color().value() < 128;
     return QIcon(QString(":/icons/%1/svg/%2.svg")
         .arg(darkTheme ? "white" : "black", iconName));
+}
+
+static bool localGameListContains(const QString& gameName)
+{
+    if (gameName.startsWith("*") || infos.gameList == nullptr)
+    {
+        return true;
+    }
+
+    const char* p = infos.gameList;
+    while (*p)
+    {
+        if (gameName == QString::fromUtf8(p))
+        {
+            return true;
+        }
+        p += strlen(p) + 1;
+    }
+
+    return false;
 }
 
 static QString buildP2PStyleSheet(const QString& theme)
@@ -564,6 +586,10 @@ void KailleraP2PDialog::setupUI()
     m_btnReady = new QPushButton("Ready", this);
     m_btnReady->setCheckable(true);
     m_btnReady->setObjectName("KailleraP2PPrimaryButton");
+    if (!m_isHost)
+    {
+        m_btnReady->setEnabled(false);
+    }
     m_btnDrop = new QPushButton("Drop Game", this);
     m_btnDrop->setObjectName("KailleraP2PSecondaryButton");
     btnRow->addWidget(m_btnReady);
@@ -646,8 +672,9 @@ void KailleraP2PDialog::setupUI()
     connect(m_frameDelayCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         if (isRollbackMode())
         {
+            // Rollback dropdown lists delays 1..9, so persisted value = index + 1.
             QSettings settings("RMG-K", "n02");
-            settings.setValue("Rollback_FrameDelay", index);
+            settings.setValue("Rollback_FrameDelay", index + 1);
         }
         else
         {
@@ -704,8 +731,11 @@ void KailleraP2PDialog::setupUI()
         hostLayout->addLayout(codeRow);
 
         m_enlistCheck = new QCheckBox("Show on public list", m_hostGroup);
+        m_enlistCheck->setChecked(CoreSettingsGetBoolValue(SettingsID::Kaillera_P2PShowOnPublicList));
         hostLayout->addWidget(m_enlistCheck);
         connect(m_enlistCheck, &QCheckBox::toggled, this, [this](bool checked) {
+            CoreSettingsSetValue(SettingsID::Kaillera_P2PShowOnPublicList, checked);
+            CoreSettingsSave();
             if (checked)
                 enlistGame();
             else
@@ -771,6 +801,8 @@ void KailleraP2PDialog::connectSignals()
     connect(&bridge, &KailleraUIBridge::p2pClientDropped, this, &KailleraP2PDialog::onClientDropped,
             kUiCallbackConnection);
     connect(&bridge, &KailleraUIBridge::p2pDebugMessage, this, &KailleraP2PDialog::onDebug,
+            kUiCallbackConnection);
+    connect(&bridge, &KailleraUIBridge::p2pHostedGame, this, &KailleraP2PDialog::onHostedGame,
             kUiCallbackConnection);
     connect(&bridge, &KailleraUIBridge::p2pPingUpdated, this, &KailleraP2PDialog::onPingUpdated,
             kUiCallbackConnection);
@@ -934,17 +966,19 @@ void KailleraP2PDialog::applyGameLayerUI()
         m_frameDelayCombo->clear();
         if (rollback)
         {
-            for (int delay = 0; delay <= 9; delay++)
+            // 0-frame delay is intentionally excluded until the host-side
+            // baseline-rollback crash is solved; start the list at 1.
+            for (int delay = 1; delay <= 9; delay++)
             {
                 m_frameDelayCombo->addItem(delay == 1 ? "1 frame" : QString("%1 frames").arg(delay));
             }
             QSettings settings("RMG-K", "n02");
             int rollbackDelay = settings.value("Rollback_FrameDelay", 2).toInt();
-            if (rollbackDelay < 0 || rollbackDelay > 9)
+            if (rollbackDelay < 1 || rollbackDelay > 9)
             {
                 rollbackDelay = 2;
             }
-            m_frameDelayCombo->setCurrentIndex(rollbackDelay);
+            m_frameDelayCombo->setCurrentIndex(rollbackDelay - 1);
         }
         else
         {
@@ -968,15 +1002,20 @@ void KailleraP2PDialog::applyGameLayerUI()
         m_frameDelayLabel->setText(rollback ? "Local Input Delay:" : "Frame Delay:");
     }
 
+    // Frame delay is baked into the GekkoNet (or Kaillera) session at start —
+    // changing it mid-game has no effect until the next session, so lock the
+    // row down for the duration of an active game.
+    const bool inGame = (rollback && m_rollbackGameActive) || n02::isGameRunning();
+
     if (m_frameDelayRow != nullptr)
     {
         m_frameDelayRow->setVisible(true);
-        m_frameDelayRow->setEnabled(m_isHost || rollback);
+        m_frameDelayRow->setEnabled((m_isHost || rollback) && !inGame);
     }
     if (m_predictionWindowRow != nullptr)
     {
         m_predictionWindowRow->setVisible(true);
-        m_predictionWindowRow->setEnabled(rollback);
+        m_predictionWindowRow->setEnabled(rollback && !inGame);
     }
 }
 
@@ -1140,7 +1179,7 @@ bool KailleraP2PDialog::travTryFallbackConnect(const QString& reason)
 
     m_chat->append("<span style='color:green;'>" + timestamp() +
                    "NAT traversal: " + reason.toHtmlEscaped() +
-                   ". Falling back to " + ip + ":" + QString::number(port) + "</span>");
+                   ". Falling back to direct connect</span>");
 
     QByteArray ipBytes = ip.toUtf8();
     if (!p2p_core_connect(ipBytes.data(), port))
@@ -1344,7 +1383,7 @@ void KailleraP2PDialog::onSsrvPacketReceived(QByteArray cmd, QByteArray saddr)
             int hostPort = atoi(parts[4]);
 
             m_chat->append("<span style='color:green;'>" + timestamp() +
-                           "NAT traversal: got host " + hostIp + ":" + QString::number(hostPort) + "</span>");
+                           "NAT traversal: got host endpoint</span>");
 
             m_travJoinToken = token;
             m_travJoinHostIp = hostIp;
@@ -1388,7 +1427,7 @@ void KailleraP2PDialog::onSsrvPacketReceived(QByteArray cmd, QByteArray saddr)
             if (!m_travLiveToken.isEmpty() && token != m_travLiveToken) return;
 
             m_chat->append("<span style='color:green;'>" + timestamp() +
-                           "NAT traversal: peer " + peerIp + ":" + QString::number(peerPort) + "</span>");
+                           "NAT traversal: got peer endpoint</span>");
 
             m_travHostPeerIp = peerIp;
             m_travHostPeerPort = peerPort;
@@ -1520,7 +1559,7 @@ void KailleraP2PDialog::onGameStarted(QString game, int player, int maxPlayers)
         char peerIp[128] = {};
         int peerP2PPort = 0;
         const int localP2PPort = p2p_core_get_port();
-        const int frameDelay = (m_frameDelayCombo != nullptr) ? m_frameDelayCombo->currentIndex() : 0;
+        const int frameDelay = (m_frameDelayCombo != nullptr) ? m_frameDelayCombo->currentIndex() + 1 : 1;
         const int predictionWindow = (m_predictionWindowCombo != nullptr) ? m_predictionWindowCombo->currentIndex() + 1 : 4;
         if (!p2p_core_get_peer_endpoint(peerIp, sizeof(peerIp), &peerP2PPort))
         {
@@ -1534,6 +1573,7 @@ void KailleraP2PDialog::onGameStarted(QString game, int player, int maxPlayers)
         }
 
         m_rollbackGameActive = true;
+        applyGameLayerUI();
         m_chat->append("<span style='color:green;'>" + timestamp() + "Rollback game started: " + game.toHtmlEscaped() + "</span>");
         emit rollbackSessionReady(game, QString::fromUtf8(peerIp), localP2PPort, peerP2PPort, player, frameDelay, predictionWindow);
         return;
@@ -1542,6 +1582,7 @@ void KailleraP2PDialog::onGameStarted(QString game, int player, int maxPlayers)
     (void)player;
     (void)maxPlayers;
     m_chat->append("<span style='color:green;'>" + timestamp() + "Game started: " + game.toHtmlEscaped() + "</span>");
+    applyGameLayerUI();
 }
 
 void KailleraP2PDialog::onGameEnded()
@@ -1553,6 +1594,7 @@ void KailleraP2PDialog::onGameEnded()
         m_rollbackGameActive = false;
         m_ready = false;
         if (m_btnReady) m_btnReady->setChecked(false);
+        applyGameLayerUI();
         if (wasActive || wasReady)
         {
             m_chat->append("<span style='color:" + QString(QApplication::palette().window().color().value() < 128 ? "cornflowerblue" : "darkblue") + ";'>" + timestamp() + "Game ended.</span>");
@@ -1570,6 +1612,7 @@ void KailleraP2PDialog::onGameEnded()
     CoreStopEmulation();
     m_ready = false;
     if (m_btnReady) m_btnReady->setChecked(false);
+    applyGameLayerUI();
     m_chat->append("<span style='color:" + QString(QApplication::palette().window().color().value() < 128 ? "cornflowerblue" : "darkblue") + ";'>" + timestamp() + "Game ended.</span>");
 }
 
@@ -1583,6 +1626,41 @@ void KailleraP2PDialog::onClientDropped(QString nick, int player)
 void KailleraP2PDialog::onDebug(QString message)
 {
     m_chat->append("<span style='color:green;'>" + message.toHtmlEscaped() + "</span>");
+}
+
+void KailleraP2PDialog::onHostedGame(QString game)
+{
+    if (m_isHost)
+    {
+        return;
+    }
+
+    m_gameName = game;
+    if (m_gameLabel != nullptr)
+    {
+        m_gameLabel->setText("Game: " + m_gameName);
+    }
+
+    if (localGameListContains(m_gameName))
+    {
+        if (m_btnReady != nullptr)
+        {
+            m_btnReady->setEnabled(true);
+        }
+        return;
+    }
+
+    m_ready = false;
+    if (m_btnReady != nullptr)
+    {
+        m_btnReady->setChecked(false);
+        m_btnReady->setEnabled(false);
+    }
+
+    const QString message = "The ROM '" + m_gameName + "' is not in your list.";
+    m_chat->append("<span style='color:red;'>" + timestamp() + message.toHtmlEscaped() + "</span>");
+    QMessageBox::warning(this, "P2P Join", message);
+    reject();
 }
 
 void KailleraP2PDialog::onPingUpdated(int ping)
@@ -1606,6 +1684,14 @@ void KailleraP2PDialog::onPeerJoined()
 {
     if (m_pingLabel) m_pingLabel->setText("Ping: measuring...");
     m_chat->append("<span style='color:green;'>" + timestamp() + "Peer connected.</span>");
+    if (m_isHost && CoreSettingsGetBoolValue(SettingsID::Kaillera_BeepOnJoin))
+    {
+        QApplication::beep();
+    }
+    if (m_isHost && CoreSettingsGetBoolValue(SettingsID::Kaillera_FlashOnJoin) && !isActiveWindow())
+    {
+        QApplication::alert(this);
+    }
     sendGameLayer();
     m_travHostPeerIp.clear();
     m_travHostPeerPort = 0;
@@ -1636,6 +1722,10 @@ void KailleraP2PDialog::onPeerLeft()
     m_chat->append("<span style='color:red;'>" + timestamp() + "Peer disconnected.</span>");
     m_ready = false;
     if (m_btnReady) m_btnReady->setChecked(false);
+    if (!m_isHost && m_btnReady != nullptr)
+    {
+        m_btnReady->setEnabled(false);
+    }
 
     // Clear peer punching state (always, regardless of trav mode)
     m_travHostPeerIp.clear();
@@ -1689,6 +1779,16 @@ void KailleraP2PDialog::onSendChat()
 
 void KailleraP2PDialog::onReady()
 {
+    if (!m_isHost && m_gameName.isEmpty())
+    {
+        m_ready = false;
+        if (m_btnReady != nullptr)
+        {
+            m_btnReady->setChecked(false);
+        }
+        return;
+    }
+
     if (m_isHost)
     {
         sendGameLayer();

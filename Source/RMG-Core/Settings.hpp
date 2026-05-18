@@ -19,8 +19,6 @@ enum class SettingsID
     GUI_HideCursorInEmulation = 0,
     GUI_HideCursorInFullscreenEmulation,
     GUI_StatusbarMessageDuration,
-    GUI_PauseEmulationOnFocusLoss,
-    GUI_ResumeEmulationOnFocus,
     GUI_AutomaticFullscreen,
     GUI_ExclusiveFullscreen,
     GUI_ExclusiveFullscreenMonitor,
@@ -97,6 +95,7 @@ enum class SettingsID
     Kaillera_GameColumnWidths,
     Kaillera_PlayerColumnWidths,
     Kaillera_P2PLastGame,
+    Kaillera_P2PShowOnPublicList,
     Kaillera_FfmpegPath,
     Kaillera_ExportLabelPorts,
 

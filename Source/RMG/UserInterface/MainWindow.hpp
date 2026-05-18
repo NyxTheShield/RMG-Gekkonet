@@ -103,7 +103,6 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     bool ui_ShowToolbar   = false;
     bool ui_ShowStatusbar = false;
 
-    bool ui_ManuallyPaused = true;
     bool ui_ManuallySavedState  = false;
     bool ui_ManuallyLoadedState = false;
     CoreRollbackState ui_RollbackDebugState;
@@ -224,8 +223,6 @@ class MainWindow : public QMainWindow, private Ui::MainWindow
     void updateNetplayChatPrompt(void);
     void closeNetplayChatPrompt(void);
 #endif // NETPLAY
-
-    void on_QGuiApplication_applicationStateChanged(Qt::ApplicationState state);
 
 #ifdef UPDATER
     void on_networkAccessManager_Finished(QNetworkReply *reply);

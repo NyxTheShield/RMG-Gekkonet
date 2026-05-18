@@ -12,7 +12,6 @@
 #include "KailleraP2PDialog.hpp"
 #include "KailleraTraversalConfig.hpp"
 #include "KailleraTableStyle.hpp"
-#include "KailleraWaitingGamesDialog.hpp"
 
 #ifdef NETPLAY
 
@@ -36,6 +35,7 @@
 #include <QEventLoop>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QItemSelectionModel>
 #include <QMessageBox>
 #include <QProgressDialog>
 #include <QUrl>
@@ -63,6 +63,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QProxyStyle>
+#include <QPixmap>
 #include <QStyledItemDelegate>
 #include <QStringList>
 #include <QMainWindow>
@@ -83,6 +84,18 @@ namespace {
 
 static constexpr int kMaxTraversalDigits = 3;
 static constexpr int kConnectPollIntervalMs = 1;
+static constexpr int kP2PWaitingGamesRefreshMs = 8000;
+static constexpr int kP2PWaitingCodeRole = static_cast<int>(Qt::UserRole) + 1;
+static constexpr int kP2PWaitingHostRole = static_cast<int>(Qt::UserRole) + 2;
+static const char* kP2PWaitingGamesUrl = "http://kaillerareborn.2manygames.fr:27887/plist.txt";
+
+enum class P2PWaitingStatus {
+    Favorite = 0,
+    Saved = 1,
+    Available = 2,
+    Warning = 3
+};
+
 int parseStoredPingValue(const QString& storedPingText, const QString& storedPingValueText)
 {
     bool ok = false;
@@ -260,8 +273,35 @@ static QIcon themedLineIcon(const QString& iconName)
     return QIcon(iconPath);
 }
 
+static QIcon tintedLineIcon(const QString& iconName, const QColor& color)
+{
+    const QIcon baseIcon = themedLineIcon(iconName);
+    QIcon tintedIcon;
+    for (const QSize& size : {QSize(14, 14), QSize(16, 16), QSize(22, 22), QSize(32, 32)})
+    {
+        QPixmap pixmap = baseIcon.pixmap(size);
+        if (pixmap.isNull())
+        {
+            continue;
+        }
+
+        QPainter painter(&pixmap);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        painter.fillRect(pixmap.rect(), color);
+        painter.end();
+        tintedIcon.addPixmap(pixmap);
+    }
+
+    return tintedIcon.isNull() ? baseIcon : tintedIcon;
+}
+
 static QIcon themedFavoriteIcon(const QString& iconName)
 {
+    if (iconName == "star-fill")
+    {
+        return tintedLineIcon(iconName, QColor(245, 179, 1));
+    }
+
     const QString theme = QString::fromStdString(CoreSettingsGetStringValue(SettingsID::GUI_Theme));
     if (theme == "Fusion Dark")
     {
@@ -269,6 +309,103 @@ static QIcon themedFavoriteIcon(const QString& iconName)
     }
 
     return themedLineIcon(iconName);
+}
+
+static bool extractP2PAppCode(QString& emulator, QString& code)
+{
+    static const QString prefix = " {CC:";
+    static const QString suffix = "}";
+
+    const int prefixIdx = emulator.indexOf(prefix);
+    if (prefixIdx < 0)
+    {
+        return false;
+    }
+
+    const int codeStart = prefixIdx + prefix.length();
+    const int suffixIdx = emulator.indexOf(suffix, codeStart);
+    if (suffixIdx < 0)
+    {
+        return false;
+    }
+
+    code = emulator.mid(codeStart, suffixIdx - codeStart);
+    emulator.truncate(prefixIdx);
+    return true;
+}
+
+static bool localKailleraGameListContains(const QString& gameName)
+{
+    if (gameName.startsWith("*") || infos.gameList == nullptr)
+    {
+        return true;
+    }
+
+    const char* p = infos.gameList;
+    while (*p)
+    {
+        if (gameName == QString::fromUtf8(p))
+        {
+            return true;
+        }
+        p += strlen(p) + 1;
+    }
+
+    return false;
+}
+
+static QIcon drawnP2PWaitingStatusIcon(P2PWaitingStatus status)
+{
+    constexpr int iconExtent = 32;
+    QPixmap pixmap(iconExtent, iconExtent);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    if (status == P2PWaitingStatus::Warning)
+    {
+        QPainterPath triangle;
+        triangle.moveTo(iconExtent / 2.0, 4.0);
+        triangle.lineTo(iconExtent - 4.0, iconExtent - 4.0);
+        triangle.lineTo(4.0, iconExtent - 4.0);
+        triangle.closeSubpath();
+
+        painter.setPen(QPen(QColor(168, 92, 0), 2));
+        painter.setBrush(QColor(245, 145, 0));
+        painter.drawPath(triangle);
+
+        painter.setPen(QPen(QColor(32, 32, 32), 3, Qt::SolidLine, Qt::RoundCap));
+        painter.drawLine(iconExtent / 2, 12, iconExtent / 2, 21);
+        painter.setBrush(QColor(32, 32, 32));
+        painter.setPen(Qt::NoPen);
+        painter.drawEllipse(QPointF(iconExtent / 2.0, 25.0), 1.8, 1.8);
+    }
+    else if (status == P2PWaitingStatus::Available)
+    {
+        painter.setPen(QPen(QColor(24, 116, 50), 2));
+        painter.setBrush(QColor(38, 166, 76));
+        painter.drawEllipse(QRectF(7.0, 7.0, 18.0, 18.0));
+    }
+
+    painter.end();
+    return QIcon(pixmap);
+}
+
+static QIcon p2pWaitingStatusIcon(P2PWaitingStatus status)
+{
+    switch (status)
+    {
+    case P2PWaitingStatus::Favorite:
+        return themedFavoriteIcon("star-fill");
+    case P2PWaitingStatus::Saved:
+        return themedFavoriteIcon("star");
+    case P2PWaitingStatus::Available:
+    case P2PWaitingStatus::Warning:
+        return drawnP2PWaitingStatusIcon(status);
+    }
+
+    return QIcon();
 }
 
 static bool isPrivateHostPort(const QString& hostPort)
@@ -1188,6 +1325,28 @@ static QString buildLauncherStyleSheet(const QString& theme)
         "  font-weight: 600;"
         "  font-size: 15px;"
         "}"
+        "QLabel#KailleraP2PPanelTitle {"
+        "  color: palette(text);"
+        "  font-weight: 600;"
+        "  font-size: 15px;"
+        "}"
+        "QPushButton#KailleraP2PReloadButton {"
+        "  color: palette(mid);"
+        "  border: 1px solid transparent;"
+        "  border-radius: %2;"
+        "  background-color: transparent;"
+        "  padding: 2px;"
+        "  font-weight: 600;"
+        "}"
+        "QPushButton#KailleraP2PReloadButton:hover {"
+        "  border-color: palette(mid);"
+        "  background-color: palette(alternate-base);"
+        "}"
+        "QPushButton#KailleraP2PReloadButton:disabled {"
+        "  color: palette(mid);"
+        "  border-color: transparent;"
+        "  background-color: transparent;"
+        "}"
         "QLineEdit#KailleraInput {"
         "  border: 1px solid palette(mid);"
         "  border-radius: %2;"
@@ -1846,7 +2005,7 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     connectBodyLayout->setContentsMargins(0, 0, 0, 0);
     connectBodyLayout->setSpacing(10);
 
-    // Top row: IP/Code field + Connect + Waiting Games
+    // Top row: IP/Code field + Connect
     auto* addrLayout = new QHBoxLayout();
     auto* addrLabel = new QLabel("IP/Code:", connectBody);
     addrLabel->setObjectName("KailleraFieldLabel");
@@ -1867,14 +2026,22 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     configureLauncherAccentPalette(m_btnP2PJoin);
     connect(m_btnP2PJoin, &QPushButton::clicked, this, &KailleraNetplayDialog::onP2PJoin);
     addrLayout->addWidget(m_btnP2PJoin);
-    m_btnP2PWaitingGames = new QPushButton("Waiting Games", connectBody);
-    m_btnP2PWaitingGames->setObjectName("KailleraSecondaryButton");
-    configureLauncherButtonMetrics(m_btnP2PWaitingGames);
-    connect(m_btnP2PWaitingGames, &QPushButton::clicked, this, &KailleraNetplayDialog::onP2PWaitingGames);
-    addrLayout->addWidget(m_btnP2PWaitingGames);
     connectBodyLayout->addLayout(addrLayout);
 
-    m_p2pStoredList = new QListWidget(connectBody);
+    auto* p2pListsLayout = new QHBoxLayout();
+    p2pListsLayout->setContentsMargins(0, 0, 0, 0);
+    p2pListsLayout->setSpacing(10);
+
+    auto* storedPanel = new QWidget(connectBody);
+    auto* storedPanelLayout = new QVBoxLayout(storedPanel);
+    storedPanelLayout->setContentsMargins(0, 0, 0, 0);
+    storedPanelLayout->setSpacing(4);
+
+    auto* storedTitle = new QLabel("Saved Opponents", storedPanel);
+    storedTitle->setObjectName("KailleraP2PPanelTitle");
+    storedPanelLayout->addWidget(storedTitle);
+
+    m_p2pStoredList = new QListWidget(storedPanel);
     m_p2pStoredList->setObjectName("KailleraP2PCardList");
     m_p2pStoredList->setViewMode(QListView::IconMode);
     m_p2pStoredList->setFlow(QListView::LeftToRight);
@@ -1884,6 +2051,14 @@ QWidget* KailleraNetplayDialog::createP2PTab()
     m_p2pStoredList->setUniformItemSizes(true);
     m_p2pStoredList->setSpacing(1);
     m_p2pStoredList->setGridSize(QSize(116, 64));
+    const int storedTileColumns = 2;
+    const int storedPanelWidth =
+        (m_p2pStoredList->gridSize().width() * storedTileColumns) +
+        (m_p2pStoredList->spacing() * (storedTileColumns + 1)) +
+        style()->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, m_p2pStoredList) +
+        12;
+    storedPanel->setFixedWidth(storedPanelWidth);
+    storedPanel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     m_p2pStoredList->setSelectionMode(QAbstractItemView::SingleSelection);
     m_p2pStoredList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_p2pStoredList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -1894,24 +2069,108 @@ QWidget* KailleraNetplayDialog::createP2PTab()
         theme == "Modern",
         [this](int row) { toggleP2PStoredFavorite(row); },
         m_p2pStoredList));
-    connect(m_p2pStoredList, &QListWidget::currentItemChanged, this,
-        [this](QListWidgetItem* current, QListWidgetItem*) {
-            if (current == nullptr)
-            {
-                return;
-            }
+    auto useP2PStoredItem = [this](QListWidgetItem* item, bool connectNow) {
+        if (item == nullptr || m_p2pStoredList == nullptr || m_p2pHostEdit == nullptr)
+        {
+            return;
+        }
 
-            const int row = m_p2pStoredList->row(current);
-            if (row >= 0 && row < m_p2pStoredUsers.size() && m_p2pHostEdit != nullptr)
-            {
-                m_p2pHostEdit->setText(m_p2pStoredUsers[row].host);
-            }
+        const int row = m_p2pStoredList->row(item);
+        if (row < 0 || row >= m_p2pStoredUsers.size())
+        {
+            return;
+        }
+
+        m_p2pHostEdit->setText(m_p2pStoredUsers[row].host);
+        if (connectNow)
+        {
+            onP2PJoin();
+        }
+    };
+    connect(m_p2pStoredList, &QListWidget::currentItemChanged, this,
+        [useP2PStoredItem](QListWidgetItem* current, QListWidgetItem*) {
+            useP2PStoredItem(current, false);
+        });
+    connect(m_p2pStoredList, &QListWidget::itemClicked, this,
+        [useP2PStoredItem](QListWidgetItem* item) {
+            useP2PStoredItem(item, false);
+        });
+    connect(m_p2pStoredList, &QListWidget::itemDoubleClicked, this,
+        [useP2PStoredItem](QListWidgetItem* item) {
+            useP2PStoredItem(item, true);
         });
     connect(m_p2pStoredList, &QListWidget::customContextMenuRequested,
         this, &KailleraNetplayDialog::onP2PStoredRightClicked);
-    connectBodyLayout->addWidget(m_p2pStoredList, 1);
+    storedPanelLayout->addWidget(m_p2pStoredList, 1);
+
+    auto* waitingPanel = new QWidget(connectBody);
+    auto* waitingPanelLayout = new QVBoxLayout(waitingPanel);
+    waitingPanelLayout->setContentsMargins(0, 0, 0, 0);
+    waitingPanelLayout->setSpacing(4);
+
+    auto* waitingHeaderLayout = new QHBoxLayout();
+    waitingHeaderLayout->setContentsMargins(0, 0, 0, 0);
+    waitingHeaderLayout->setSpacing(8);
+    auto* waitingTitle = new QLabel("Waiting Games", waitingPanel);
+    waitingTitle->setObjectName("KailleraP2PPanelTitle");
+    waitingHeaderLayout->addWidget(waitingTitle);
+    waitingHeaderLayout->addStretch();
+    m_btnP2PWaitingGamesReload = new QPushButton(waitingPanel);
+    m_btnP2PWaitingGamesReload->setObjectName("KailleraP2PReloadButton");
+    m_btnP2PWaitingGamesReload->setFlat(true);
+    m_btnP2PWaitingGamesReload->setFocusPolicy(Qt::NoFocus);
+    m_btnP2PWaitingGamesReload->setCursor(Qt::PointingHandCursor);
+    m_btnP2PWaitingGamesReload->setIcon(tintedLineIcon("refresh-line", palette().mid().color()));
+    m_btnP2PWaitingGamesReload->setIconSize(QSize(14, 14));
+    m_btnP2PWaitingGamesReload->setFixedSize(24, 24);
+    m_btnP2PWaitingGamesReload->setToolTip("Reload waiting games");
+    connect(m_btnP2PWaitingGamesReload, &QPushButton::clicked, this,
+            [this]() { fetchP2PWaitingGames(true); });
+    waitingHeaderLayout->addWidget(m_btnP2PWaitingGamesReload);
+    waitingPanelLayout->addLayout(waitingHeaderLayout);
+
+    m_p2pWaitingGamesTable = new QTableWidget(0, 3, waitingPanel);
+    m_p2pWaitingGamesTable->setObjectName("KailleraSurface");
+    m_p2pWaitingGamesTable->setProperty("launcherWaitingGamesTable", true);
+    m_p2pWaitingGamesTable->setHorizontalHeaderLabels({"", "Host", "Game"});
+    m_p2pWaitingGamesTable->horizontalHeader()->setMinimumSectionSize(40);
+    m_p2pWaitingGamesTable->horizontalHeader()->setStretchLastSection(false);
+    m_p2pWaitingGamesTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
+    m_p2pWaitingGamesTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+    m_p2pWaitingGamesTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    m_p2pWaitingGamesTable->setColumnWidth(0, 40);
+    m_p2pWaitingGamesTable->setColumnWidth(1, 140);
+    m_p2pWaitingGamesTable->verticalHeader()->setVisible(false);
+    m_p2pWaitingGamesTable->setShowGrid(false);
+    m_p2pWaitingGamesTable->setAlternatingRowColors(true);
+    m_p2pWaitingGamesTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_p2pWaitingGamesTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_p2pWaitingGamesTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_p2pWaitingGamesTable->setFocusPolicy(Qt::NoFocus);
+    applyNoAccentStyle(m_p2pWaitingGamesTable);
+    m_p2pWaitingGamesTable->setItemDelegateForColumn(0, new CenteredIconDelegate(m_p2pWaitingGamesTable));
+    connect(m_p2pWaitingGamesTable, &QTableWidget::cellClicked, this,
+        [this](int row, int) {
+            useP2PWaitingGameRow(row, false);
+        });
+    connect(m_p2pWaitingGamesTable, &QTableWidget::cellDoubleClicked, this,
+        [this](int row, int) {
+            useP2PWaitingGameRow(row, true);
+        });
+    waitingPanelLayout->addWidget(m_p2pWaitingGamesTable, 1);
+    p2pListsLayout->addWidget(waitingPanel, 1);
+    p2pListsLayout->addWidget(storedPanel);
+
+    connectBodyLayout->addLayout(p2pListsLayout, 1);
     connectLayout->addWidget(connectBody);
     layout->addWidget(connectPane, 1);
+
+    m_p2pWaitingGamesRefreshTimer = new QTimer(this);
+    m_p2pWaitingGamesRefreshTimer->setInterval(kP2PWaitingGamesRefreshMs);
+    connect(m_p2pWaitingGamesRefreshTimer, &QTimer::timeout, this,
+            [this]() { fetchP2PWaitingGames(false); });
+    m_p2pWaitingGamesRefreshTimer->start();
+    QTimer::singleShot(0, this, [this]() { fetchP2PWaitingGames(false); });
 
     refreshP2PStaticCodeDisplay();
 
@@ -1947,7 +2206,7 @@ void KailleraNetplayDialog::loadSettings()
 
     // Load active mode and select the corresponding tab
     int mode = CoreSettingsGetIntValue(SettingsID::Kaillera_ActiveMode);
-    if (mode < 0 || mode > 1) mode = 1;
+    if (mode < 0 || mode > 1) mode = 0;
     // Tab order: 0=Server, 1=P2P
     // Mode order: 0=P2P, 1=Server
     int tabIndex = (mode == 0) ? 1 : 0;
@@ -3642,7 +3901,38 @@ void KailleraNetplayDialog::onWaitingGamesReply(QNetworkReply* reply)
     wgBtnLayout->addWidget(btnWgClose);
     wgLayout->addLayout(wgBtnLayout);
 
+    QString connectWaitingGameServerHost;
+    QString connectWaitingGameServerName;
+
+    auto queueWaitingGameServerConnect = [wgTable, wgDialog, &connectWaitingGameServerHost,
+                                          &connectWaitingGameServerName](int row) {
+        if (row < 0)
+        {
+            return;
+        }
+
+        QTableWidgetItem* serverNameItem = wgTable->item(row, 3);
+        QTableWidgetItem* hostPortItem = wgTable->item(row, 4);
+        if (serverNameItem == nullptr || hostPortItem == nullptr)
+        {
+            return;
+        }
+
+        connectWaitingGameServerName = serverNameItem->text().trimmed();
+        connectWaitingGameServerHost = hostPortItem->text().trimmed();
+        if (connectWaitingGameServerHost.isEmpty())
+        {
+            return;
+        }
+
+        wgDialog->accept();
+    };
+
     connect(btnWgClose, &QPushButton::clicked, wgDialog, &QDialog::accept);
+    connect(wgTable, &QTableWidget::cellDoubleClicked, this,
+        [queueWaitingGameServerConnect](int row, int) {
+            queueWaitingGameServerConnect(row);
+        });
 
     // Parse: pipe-delimited fields, 7 per entry
     // GameName|IP:Port|Username|EmuName|WaitingPlayers|ServerName|ServerLocation|...
@@ -3691,6 +3981,66 @@ void KailleraNetplayDialog::onWaitingGamesReply(QNetworkReply* reply)
 
     wgDialog->exec();
     delete wgDialog;
+
+    if (connectWaitingGameServerHost.isEmpty())
+    {
+        return;
+    }
+
+    int displayIndex = -1;
+    for (int i = 0; i < m_displayServers.size(); ++i)
+    {
+        if (m_displayServers[i].host == connectWaitingGameServerHost)
+        {
+            displayIndex = i;
+            break;
+        }
+    }
+
+    if (displayIndex < 0)
+    {
+        if (favoriteServerIndexByHost(connectWaitingGameServerHost) < 0)
+        {
+            const int cachedIndex = cachedServerIndexByHost(connectWaitingGameServerHost);
+            if (cachedIndex < 0)
+            {
+                m_cachedLiveServers.append({
+                    connectWaitingGameServerName.isEmpty()
+                        ? connectWaitingGameServerHost
+                        : connectWaitingGameServerName,
+                    connectWaitingGameServerHost,
+                    QString(),
+                    "-",
+                    -1,
+                    "-",
+                    999999
+                });
+            }
+            else if (!connectWaitingGameServerName.isEmpty())
+            {
+                m_cachedLiveServers[cachedIndex].name = connectWaitingGameServerName;
+            }
+
+            saveServerList();
+        }
+
+        refreshServerListDisplay();
+
+        for (int i = 0; i < m_displayServers.size(); ++i)
+        {
+            if (m_displayServers[i].host == connectWaitingGameServerHost)
+            {
+                displayIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (displayIndex >= 0)
+    {
+        m_serverTable->selectRow(displayIndex);
+        onConnectServer();
+    }
 }
 
 void KailleraNetplayDialog::onConnectServer()
@@ -4527,22 +4877,265 @@ void KailleraNetplayDialog::onP2PPasteAndGo()
     onP2PJoin();
 }
 
-void KailleraNetplayDialog::onP2PWaitingGames()
+void KailleraNetplayDialog::fetchP2PWaitingGames(bool manualRefresh)
 {
-    KailleraWaitingGamesDialog dlg(this);
-    if (dlg.exec() != QDialog::Accepted) return;
+    if (m_p2pWaitingGamesFetchInFlight || m_netManager == nullptr)
+    {
+        return;
+    }
 
-    QString code = dlg.selectedCode();
-    QString host = dlg.selectedHost();
-    if (code.isEmpty() && host.isEmpty()) return;
+    m_p2pWaitingGamesFetchInFlight = true;
+    if (m_btnP2PWaitingGamesReload != nullptr)
+    {
+        m_btnP2PWaitingGamesReload->setEnabled(false);
+        m_btnP2PWaitingGamesReload->setToolTip(manualRefresh ? "Reloading waiting games..." : "Loading waiting games...");
+    }
 
-    // Fill the address field and connect
-    if (!code.isEmpty())
-        m_p2pHostEdit->setText(code);
-    else
-        m_p2pHostEdit->setText(host);
+    QNetworkRequest request{QUrl(kP2PWaitingGamesUrl)};
+    QNetworkReply* reply = m_netManager->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        handleP2PWaitingGamesReply(reply);
+    });
+}
 
-    onP2PJoin();
+void KailleraNetplayDialog::handleP2PWaitingGamesReply(QNetworkReply* reply)
+{
+    m_p2pWaitingGamesFetchInFlight = false;
+
+    if (reply == nullptr)
+    {
+        if (m_btnP2PWaitingGamesReload != nullptr)
+        {
+            m_btnP2PWaitingGamesReload->setEnabled(true);
+            m_btnP2PWaitingGamesReload->setToolTip("Reload waiting games");
+        }
+        return;
+    }
+
+    if (reply->error() != QNetworkReply::NoError)
+    {
+        if (m_btnP2PWaitingGamesReload != nullptr)
+        {
+            m_btnP2PWaitingGamesReload->setEnabled(true);
+            m_btnP2PWaitingGamesReload->setToolTip("Reload waiting games. Last refresh failed.");
+        }
+        reply->deleteLater();
+        return;
+    }
+
+    const QByteArray data = reply->readAll();
+    reply->deleteLater();
+    populateP2PWaitingGames(data);
+}
+
+void KailleraNetplayDialog::populateP2PWaitingGames(const QByteArray& data)
+{
+    if (m_p2pWaitingGamesTable == nullptr)
+    {
+        if (m_btnP2PWaitingGamesReload != nullptr)
+        {
+            m_btnP2PWaitingGamesReload->setEnabled(true);
+            m_btnP2PWaitingGamesReload->setToolTip("Reload waiting games");
+        }
+        return;
+    }
+
+    QString selectedCode;
+    QString selectedHost;
+    const int selectedRow = m_p2pWaitingGamesTable->currentRow();
+    if (selectedRow >= 0)
+    {
+        if (QTableWidgetItem* selectedItem = m_p2pWaitingGamesTable->item(selectedRow, 0); selectedItem != nullptr)
+        {
+            selectedCode = selectedItem->data(kP2PWaitingCodeRole).toString();
+            selectedHost = selectedItem->data(kP2PWaitingHostRole).toString();
+        }
+    }
+
+    QByteArray body = data;
+    const int headerEnd = body.indexOf("\r\n\r\n");
+    if (headerEnd >= 0)
+    {
+        body = body.mid(headerEnd + 4);
+    }
+
+    m_p2pWaitingGamesTable->setRowCount(0);
+
+    if (body.trimmed().isEmpty())
+    {
+        if (m_btnP2PWaitingGamesReload != nullptr)
+        {
+            m_btnP2PWaitingGamesReload->setEnabled(true);
+            m_btnP2PWaitingGamesReload->setToolTip("Reload waiting games");
+        }
+        return;
+    }
+
+    struct WaitingGameEntry {
+        QString gameName;
+        QString emulator;
+        QString userName;
+        QString hostPort;
+        QString code;
+        QString tooltip;
+        P2PWaitingStatus status = P2PWaitingStatus::Available;
+    };
+
+    QVector<WaitingGameEntry> entries;
+    const QList<QByteArray> lines = body.split('\n');
+    for (const QByteArray& line : lines)
+    {
+        if (line.trimmed().isEmpty())
+        {
+            continue;
+        }
+
+        // plist.txt may return either newline-separated rows or one flat pipe stream.
+        const QList<QByteArray> fields = line.split('|');
+        if (fields.size() < 4)
+        {
+            continue;
+        }
+
+        for (qsizetype fieldIndex = 0; fieldIndex + 3 < fields.size(); fieldIndex += 4)
+        {
+            const QString gameName = QString::fromUtf8(fields[fieldIndex].trimmed());
+            QString emulator = QString::fromUtf8(fields[fieldIndex + 1].trimmed());
+            const QString userName = QString::fromUtf8(fields[fieldIndex + 2].trimmed());
+            const QString hostPort = QString::fromUtf8(fields[fieldIndex + 3].trimmed());
+
+            QString code;
+            extractP2PAppCode(emulator, code);
+            if (code.isEmpty())
+            {
+                continue;
+            }
+
+            const bool gameAvailable = localKailleraGameListContains(gameName);
+            const QString localEmulator = QString::fromUtf8(APP).trimmed();
+            const bool emulatorMismatch = emulator.trimmed() != localEmulator;
+
+            const QString normalizedCode = normalizeTraversalCode(code);
+            int storedIndex = normalizedCode.isEmpty() ? -1 : p2pStoredIndexByHost(normalizedCode);
+            if (storedIndex < 0)
+            {
+                storedIndex = p2pStoredIndexByHost(code);
+            }
+            if (storedIndex < 0)
+            {
+                storedIndex = p2pStoredIndexByHost(hostPort);
+            }
+
+            P2PWaitingStatus status = P2PWaitingStatus::Available;
+            QStringList tooltipLines;
+            tooltipLines << gameName << emulator << code;
+            if (!gameAvailable)
+            {
+                tooltipLines << "Warning: this ROM is not in your local list.";
+            }
+            if (emulatorMismatch)
+            {
+                tooltipLines << QString("Warning: emulator/version differs. Host: %1. You: %2.")
+                    .arg(emulator, localEmulator);
+            }
+
+            if (!gameAvailable || emulatorMismatch)
+            {
+                status = P2PWaitingStatus::Warning;
+            }
+            else if (storedIndex >= 0 && m_p2pStoredUsers[storedIndex].favorite)
+            {
+                status = P2PWaitingStatus::Favorite;
+                tooltipLines << "Favorite saved opponent.";
+            }
+            else if (storedIndex >= 0)
+            {
+                status = P2PWaitingStatus::Saved;
+                tooltipLines << "Saved opponent.";
+            }
+            else
+            {
+                tooltipLines << "Ready to connect.";
+            }
+
+            entries.append({gameName, emulator, userName, hostPort, code, tooltipLines.join('\n'), status});
+        }
+    }
+
+    std::stable_sort(entries.begin(), entries.end(), [](const WaitingGameEntry& a, const WaitingGameEntry& b) {
+        return static_cast<int>(a.status) < static_cast<int>(b.status);
+    });
+
+    bool restoredSelection = false;
+    for (const WaitingGameEntry& entry : entries)
+    {
+        const int row = m_p2pWaitingGamesTable->rowCount();
+        m_p2pWaitingGamesTable->insertRow(row);
+
+        auto* statusItem = new QTableWidgetItem();
+        auto* userItem = new QTableWidgetItem(entry.userName);
+        auto* gameItem = new QTableWidgetItem(entry.gameName);
+
+        for (QTableWidgetItem* item : {statusItem, userItem, gameItem})
+        {
+            item->setData(kP2PWaitingCodeRole, entry.code);
+            item->setData(kP2PWaitingHostRole, entry.hostPort);
+            item->setToolTip(entry.tooltip);
+        }
+
+        statusItem->setData(Qt::UserRole, p2pWaitingStatusIcon(entry.status));
+        statusItem->setTextAlignment(Qt::AlignCenter);
+        statusItem->setFlags((statusItem->flags() | Qt::ItemIsEnabled | Qt::ItemIsSelectable)
+            & ~Qt::ItemIsEditable);
+
+        m_p2pWaitingGamesTable->setItem(row, 0, statusItem);
+        m_p2pWaitingGamesTable->setItem(row, 1, userItem);
+        m_p2pWaitingGamesTable->setItem(row, 2, gameItem);
+
+        if (!restoredSelection &&
+            ((!selectedCode.isEmpty() && selectedCode == entry.code) ||
+             (!selectedHost.isEmpty() && selectedHost == entry.hostPort)))
+        {
+            m_p2pWaitingGamesTable->setCurrentCell(
+                row,
+                0,
+                QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+            restoredSelection = true;
+        }
+    }
+
+    if (m_btnP2PWaitingGamesReload != nullptr)
+    {
+        m_btnP2PWaitingGamesReload->setEnabled(true);
+        m_btnP2PWaitingGamesReload->setToolTip("Reload waiting games");
+    }
+}
+
+void KailleraNetplayDialog::useP2PWaitingGameRow(int row, bool connectNow)
+{
+    if (m_p2pWaitingGamesTable == nullptr || m_p2pHostEdit == nullptr || row < 0)
+    {
+        return;
+    }
+
+    QTableWidgetItem* item = m_p2pWaitingGamesTable->item(row, 0);
+    if (item == nullptr)
+    {
+        return;
+    }
+
+    QString code = item->data(kP2PWaitingCodeRole).toString().trimmed();
+    QString host = item->data(kP2PWaitingHostRole).toString().trimmed();
+    if (code.isEmpty() && host.isEmpty())
+    {
+        return;
+    }
+
+    m_p2pHostEdit->setText(!code.isEmpty() ? code : host);
+    if (connectNow)
+    {
+        onP2PJoin();
+    }
 }
 
 #endif // NETPLAY
