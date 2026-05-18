@@ -27,11 +27,47 @@
 #include "device/memory/memory.h"
 #include "device/r4300/r4300_core.h"
 #include "device/rcp/ri/ri_controller.h"
+#include "main/main.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #define RDRAM_BCAST_ADDRESS_MASK UINT32_C(0x00080000)
 #define RDRAM_MODE_CE_MASK UINT32_C(0x80000000)
+#define ROLLBACK_RDRAM_WATCH_BEGIN UINT32_C(0x00394300)
+#define ROLLBACK_RDRAM_WATCH_END   UINT32_C(0x00394380)
+
+static void rollback_log_rdram_write(const char* source, uint32_t address, uint32_t old_value, uint32_t new_value, uint32_t value, uint32_t mask)
+{
+    FILE* file;
+    uint32_t* cp0_regs;
+
+    if (address + 3 < ROLLBACK_RDRAM_WATCH_BEGIN || address > ROLLBACK_RDRAM_WATCH_END) {
+        return;
+    }
+
+    file = fopen("rollback_rdram_watch.log", "a");
+    if (file == NULL) {
+        file = fopen("Bin/Release/rollback_rdram_watch.log", "a");
+    }
+    if (file == NULL) {
+        return;
+    }
+
+    cp0_regs = r4300_cp0_regs(&g_dev.r4300.cp0);
+    fprintf(file,
+        "source=%s hidden=%d pc=0x%08x cp0_count=%u address=0x%08x mask=0x%08x value=0x%08x old=0x%08x new=0x%08x\n",
+        source,
+        main_rollback_hidden_frame_active(),
+        *r4300_pc(&g_dev.r4300),
+        cp0_regs[CP0_COUNT_REG],
+        address,
+        mask,
+        value,
+        old_value,
+        new_value);
+    fclose(file);
+}
 
 /* XXX: deduce # of RDRAM modules from it's total size
  * Assume only 2Mo RDRAM modules.
@@ -259,6 +295,8 @@ void write_rdram_dram(void* opaque, uint32_t address, uint32_t value, uint32_t m
 
     if (address < rdram->dram_size)
     {
+        uint32_t old_value = rdram->dram[addr];
         masked_write(&rdram->dram[addr], value, mask);
+        rollback_log_rdram_write("core_rdram", address, old_value, rdram->dram[addr], value, mask);
     }
 }

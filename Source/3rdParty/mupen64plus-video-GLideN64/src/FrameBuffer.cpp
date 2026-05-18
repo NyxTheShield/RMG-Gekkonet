@@ -173,18 +173,20 @@ void FrameBuffer::init(u32 _address, u16 _format, u16 _size, u16 _width, bool _c
 	if (config.video.multisampling != 0) {
 		_setAndAttachTexture(m_FBO, m_pTexture, 0, true);
 		m_pTexture->frameBufferTexture = CachedTexture::fbMultiSample;
+		gfxContext.clearColorBuffer(0.0f, 0.0f, 0.0f, 0.0f);
 
 		m_pResolveTexture = textureCache().addFrameBufferTexture(textureTarget::TEXTURE_2D);
 		_initTexture(_width, maxHeight, _format, _size, m_pResolveTexture);
 		m_resolveFBO = gfxContext.createFramebuffer();
 		_setAndAttachTexture(m_resolveFBO, m_pResolveTexture, 0, false);
 		assert(!gfxContext.isFramebufferError());
+		gfxContext.clearColorBuffer(0.0f, 0.0f, 0.0f, 0.0f);
 
 		gfxContext.bindFramebuffer(bufferTarget::FRAMEBUFFER, m_FBO);
-	} else
+	} else {
 		_setAndAttachTexture(m_FBO, m_pTexture, 0, false);
-
-//	gfxContext.clearColorBuffer(0.0f, 0.0f, 0.0f, 0.0f);
+		gfxContext.clearColorBuffer(0.0f, 0.0f, 0.0f, 0.0f);
+	}
 }
 
 void FrameBuffer::updateEndAddress()
